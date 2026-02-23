@@ -1,0 +1,7 @@
+{
+  "name": "Fit Genius AI",
+  "description": "An Apple-style AI health and fitness agent with gamification, workout tracking, and personalized coaching.",
+  "requestFramePermissions": [
+    "bluetooth"
+  ]
+}
