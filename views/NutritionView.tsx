@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Utensils, CalendarDays, Coffee, Sun, Moon, Info, ChefHat, Scale, Droplet, Apple, RotateCcw, Wand2, RefreshCw, Zap, Flame, ChevronRight, Send } from 'lucide-react';
 import MarkdownContent from '../components/MarkdownContent';
 import { Language, UserProfile, MealDetails, DayPlan } from '../types';
-import { generateWeeklyPlan, askPlanQuestion, generateMealDetails } from '../services/geminiService';
+import { generateWeeklyPlan, askPlanQuestion, generateMealDetails, generateSupplementTips } from '../services/geminiService';
 import { getTranslation } from '../utils/translations';
 
 interface NutritionViewProps {
@@ -22,12 +22,16 @@ const AppleMealCard: React.FC<{
     color: string;
     isRu: boolean;
     t: any;
+    isSupplement?: boolean;
     onLoadDetails: () => Promise<void>;
-}> = ({ meal, type, icon: Icon, color, isRu, t, onLoadDetails }) => {
+}> = ({ meal, type, icon: Icon, color, isRu, t, isSupplement = false, onLoadDetails }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [loading, setLoading] = useState(false);
 
-    const hasDetails = !!(meal.ingredients && meal.recipe);
+    const hasDetails = isSupplement ? !!(meal.recipe) : !!(meal.ingredients && meal.recipe);
+    const getLabel = isSupplement
+        ? (isRu ? 'Советы' : 'Get Tips')
+        : t.getRecipe;
 
     const handleExpand = async () => {
         if (!isExpanded && !hasDetails) {
@@ -54,7 +58,7 @@ const AppleMealCard: React.FC<{
                     </div>
                     <div>
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">{type}</span>
-                        <h3 className="text-xl font-black text-slate-800 dark:text-white group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors uppercase tracking-tight">
+                        <h3 className="text-xl font-black text-slate-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors uppercase tracking-tight">
                             {meal.name}
                         </h3>
                         <div className="flex items-center gap-3 mt-1.5">
@@ -66,8 +70,11 @@ const AppleMealCard: React.FC<{
                 </div>
                 <div className="flex items-center gap-3 self-end sm:self-center">
                     {!hasDetails && !loading && (
-                        <span className="text-[10px] font-black text-green-500 bg-green-500/10 px-3 py-1 rounded-full uppercase tracking-widest transition-all group-hover:bg-green-500 group-hover:text-white animate-pulse">
-                            {t.getRecipe}
+                        <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest transition-all animate-pulse ${isSupplement
+                            ? 'text-blue-500 bg-blue-500/10 group-hover:bg-blue-500 group-hover:text-white'
+                            : 'text-green-500 bg-green-500/10 group-hover:bg-green-500 group-hover:text-white'
+                            }`}>
+                            {getLabel}
                         </span>
                     )}
                     <button className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${isExpanded ? 'bg-slate-800 text-white rotate-90' : 'bg-slate-200/50 dark:bg-slate-700/50 text-slate-400'}`}>
@@ -80,20 +87,28 @@ const AppleMealCard: React.FC<{
             <div className={`transition-all duration-500 overflow-hidden ${isExpanded ? 'max-h-[1500px] opacity-100' : 'max-h-0 opacity-0'}`}>
                 {loading ? (
                     <div className="px-8 pb-10 flex flex-col items-center justify-center space-y-4">
-                        <div className="w-10 h-10 border-4 border-slate-100 dark:border-slate-800 border-t-green-500 rounded-full animate-spin" />
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.chefWriting}</p>
+                        <div className={`w-10 h-10 border-4 border-slate-100 dark:border-slate-800 rounded-full animate-spin ${isSupplement ? 'border-t-blue-500' : 'border-t-green-500'}`} />
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            {isSupplement ? (isRu ? 'Эксперт готовит советы...' : 'Expert is writing tips...') : t.chefWriting}
+                        </p>
                     </div>
                 ) : hasDetails ? (
                     <div className="px-8 pb-8 pt-2 space-y-8 animate-fade-in">
-                        {/* Ingredients Section */}
+                        {/* Compounds (for supplements) or Ingredients (for meals) */}
                         {meal.ingredients && meal.ingredients.length > 0 && (
                             <div>
                                 <div className="flex items-center gap-2 mb-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                                    <Scale size={14} className="text-green-500" /> {isRu ? 'Ингредиенты' : 'Ingredients'}
+                                    {isSupplement
+                                        ? <><Zap size={14} className="text-blue-500" /> {isRu ? 'Состав и дозировка' : 'Compounds & Dosage'}</>
+                                        : <><Scale size={14} className="text-green-500" /> {isRu ? 'Ингредиенты' : 'Ingredients'}</>
+                                    }
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                     {meal.ingredients.map((ing, i) => (
-                                        <span key={i} className="px-4 py-2 bg-slate-100 dark:bg-slate-700/50 rounded-full text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600 transition-hover hover:border-green-400 cursor-default">
+                                        <span key={i} className={`px-4 py-2 rounded-full text-xs font-bold border cursor-default transition-hover ${isSupplement
+                                            ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700 hover:border-blue-400'
+                                            : 'bg-slate-100 dark:bg-slate-700/50 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-green-400'
+                                            }`}>
                                             {ing}
                                         </span>
                                     ))}
@@ -101,11 +116,17 @@ const AppleMealCard: React.FC<{
                             </div>
                         )}
 
-                        {/* Recipe Section */}
+                        {/* Guide Section */}
                         {meal.recipe && (
-                            <div className="bg-slate-50 dark:bg-slate-900/50 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-700">
+                            <div className={`rounded-[2rem] p-6 border ${isSupplement
+                                ? 'bg-blue-50/50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800'
+                                : 'bg-slate-50 dark:bg-slate-900/50 border-slate-100 dark:border-slate-700'
+                                }`}>
                                 <div className="flex items-center gap-2 mb-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                                    <ChefHat size={14} className="text-orange-500" /> {t.preparationGuide}
+                                    {isSupplement
+                                        ? <><Zap size={14} className="text-blue-500" /> {isRu ? 'Руководство по приёму' : 'Supplement Guide'}</>
+                                        : <><ChefHat size={14} className="text-orange-500" /> {t.preparationGuide}</>
+                                    }
                                 </div>
                                 <div className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
                                     <MarkdownContent content={meal.recipe} />
@@ -178,7 +199,7 @@ const NutritionView: React.FC<NutritionViewProps> = ({ language, userProfile, se
         }
     };
 
-    const handleLoadMealDetails = async (mealKey: keyof DayPlan['meals']) => {
+    const handleLoadMealDetails = async (mealKey: Exclude<keyof DayPlan['meals'], 'sportsNutrition'>) => {
         if (!apiKey || !userProfile || !currentDayPlan) return;
         try {
             const meal = currentDayPlan.meals[mealKey];
@@ -195,6 +216,26 @@ const NutritionView: React.FC<NutritionViewProps> = ({ language, userProfile, se
             });
         } catch (e) {
             console.error('Failed to load meal details:', e);
+        }
+    };
+
+    const handleLoadSupplementDetails = async (index: number) => {
+        if (!apiKey || !userProfile || !currentDayPlan) return;
+        try {
+            const supplement = currentDayPlan.meals.sportsNutrition[index];
+            const details = await generateSupplementTips(supplement.name, userProfile, apiKey, language);
+            setUserProfile(prev => {
+                if (!prev.weeklyPlan) return prev;
+                const newPlan = [...prev.weeklyPlan];
+                const day = { ...newPlan[selectedDayIndex] };
+                const sportsNutrition = [...day.meals.sportsNutrition];
+                sportsNutrition[index] = { ...sportsNutrition[index], ...details };
+                day.meals = { ...day.meals, sportsNutrition };
+                newPlan[selectedDayIndex] = day;
+                return { ...prev, weeklyPlan: newPlan };
+            });
+        } catch (e) {
+            console.error('Failed to load supplement details:', e);
         }
     };
 
@@ -287,17 +328,82 @@ const NutritionView: React.FC<NutritionViewProps> = ({ language, userProfile, se
                     <div className="text-center space-y-2"><h3 className="text-2xl font-black text-slate-800 dark:text-white">{t.analyzing}</h3><p className="text-slate-500 font-medium">{t.chefReady}</p></div>
                 </div>
             ) : currentDayPlan ? (
-                <div className="space-y-12 animate-fade-in" key={selectedDayIndex}>
+                <div className="space-y-10 animate-fade-in" key={selectedDayIndex}>
+                    {/* Day Header */}
                     <div className="px-6 py-4 text-center">
                         <h2 className="text-4xl font-black text-slate-800 dark:text-white tracking-tight">{`${t.menuFor} ${currentDayPlan.day}`}</h2>
                         <p className="text-slate-500 font-bold mt-2 uppercase tracking-[0.2em] text-xs">{t.balancedByAi}</p>
                     </div>
-                    <div className="grid grid-cols-1 gap-6">
-                        <AppleMealCard meal={currentDayPlan.meals.breakfast} type={t.breakfast} icon={Coffee} color="bg-orange-500" isRu={isRu} t={t} onLoadDetails={() => handleLoadMealDetails('breakfast')} />
-                        <AppleMealCard meal={currentDayPlan.meals.lunch} type={t.lunch} icon={Sun} color="bg-yellow-500" isRu={isRu} t={t} onLoadDetails={() => handleLoadMealDetails('lunch')} />
-                        <AppleMealCard meal={currentDayPlan.meals.snack} type={t.snack} icon={Apple} color="bg-pink-500" isRu={isRu} t={t} onLoadDetails={() => handleLoadMealDetails('snack')} />
-                        <AppleMealCard meal={currentDayPlan.meals.dinner} type={t.dinner} icon={Moon} color="bg-indigo-600" isRu={isRu} t={t} onLoadDetails={() => handleLoadMealDetails('dinner')} />
+
+                    {/* ── Regular Meals ── */}
+                    <div>
+                        <div className="flex items-center gap-3 mb-5 px-1">
+                            <div className="w-8 h-8 rounded-xl bg-orange-500 flex items-center justify-center shadow-md shadow-orange-200 dark:shadow-none">
+                                <Utensils size={16} className="text-white" />
+                            </div>
+                            <span className="text-sm font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                                {isRu ? 'Основное питание' : 'Daily Meals'}
+                            </span>
+                            <div className="flex-1 h-px bg-slate-100 dark:bg-slate-800" />
+                            <span className="text-xs font-bold text-slate-400">{currentDayPlan.totalCalories} kcal</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            <AppleMealCard meal={currentDayPlan.meals.breakfast} type={t.breakfast} icon={Coffee} color="bg-orange-500" isRu={isRu} t={t} onLoadDetails={() => handleLoadMealDetails('breakfast')} />
+                            <AppleMealCard meal={currentDayPlan.meals.lunch} type={t.lunch} icon={Sun} color="bg-yellow-500" isRu={isRu} t={t} onLoadDetails={() => handleLoadMealDetails('lunch')} />
+                            <AppleMealCard meal={currentDayPlan.meals.snack} type={t.snack} icon={Apple} color="bg-pink-500" isRu={isRu} t={t} onLoadDetails={() => handleLoadMealDetails('snack')} />
+                            <AppleMealCard meal={currentDayPlan.meals.dinner} type={t.dinner} icon={Moon} color="bg-indigo-600" isRu={isRu} t={t} onLoadDetails={() => handleLoadMealDetails('dinner')} />
+                        </div>
                     </div>
+
+                    {/* ── Sports Nutrition ── */}
+                    {userProfile?.useSupplements && Array.isArray(currentDayPlan.meals.sportsNutrition) && currentDayPlan.meals.sportsNutrition.length > 0 && (
+                        <div className="rounded-[2.5rem] bg-gradient-to-br from-blue-50 to-slate-50 dark:from-blue-950/30 dark:to-slate-900/50 border border-blue-100 dark:border-blue-900/40 p-6 space-y-5">
+                            {/* Section header */}
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center shadow-md shadow-blue-200 dark:shadow-none">
+                                    <Zap size={16} className="text-white" />
+                                </div>
+                                <span className="text-sm font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">
+                                    {isRu ? 'Спортивное питание' : 'Sports Nutrition'}
+                                </span>
+                                <div className="flex-1 h-px bg-blue-100 dark:bg-blue-900/40" />
+                                <span className="text-[10px] font-black uppercase tracking-widest bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-300 px-3 py-1 rounded-full border border-blue-200 dark:border-blue-800">
+                                    {(() => {
+                                        const n = currentDayPlan.meals.sportsNutrition.length;
+                                        if (isRu) {
+                                            const word = n === 1 ? 'приём' : n >= 2 && n <= 4 ? 'приёма' : 'приёмов';
+                                            return `${n} ${word}`;
+                                        }
+                                        return `${n} ${n === 1 ? 'intake' : 'intakes'}`;
+                                    })()}
+                                </span>
+                            </div>
+
+                            {/* Timeline-style cards */}
+                            <div className="relative pl-5">
+                                {/* Vertical line */}
+                                <div className="absolute left-[0.6rem] top-2 bottom-2 w-px bg-blue-200 dark:bg-blue-800/60" />
+                                <div className="space-y-3">
+                                    {currentDayPlan.meals.sportsNutrition.map((item, idx) => (
+                                        <div key={`supp-${idx}`} className="relative">
+                                            {/* Dot on timeline */}
+                                            <div className="absolute -left-5 top-7 w-2.5 h-2.5 rounded-full bg-blue-500 border-2 border-white dark:border-slate-900 shadow" />
+                                            <AppleMealCard
+                                                meal={item}
+                                                type={t.sportsNutrition}
+                                                icon={Zap}
+                                                color="bg-blue-500"
+                                                isRu={isRu}
+                                                t={t}
+                                                isSupplement={true}
+                                                onLoadDetails={() => handleLoadSupplementDetails(idx)}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Day Tip */}
                     {currentDayPlan.nutritionTip && (

@@ -108,7 +108,9 @@ export const translations = {
       sedentary: 'Sedentary (Office job, little exercise)',
       moderate: 'Moderate (Light exercise 1-3 days/week)',
       active: 'Active (Hard exercise 3-5 days/week)',
-      extraActive: 'Very Active (Intense exercise daily)'
+      extraActive: 'Very Active (Intense exercise daily)',
+      useSupplements: 'Use Sports Supplements',
+      useSupplementsDesc: 'Suggest protein, BCAAs, or vitamins based on your profile'
     },
     nutrition: {
       title: 'Nutrition AI',
@@ -337,7 +339,9 @@ export const translations = {
       sedentary: 'Сидячий (Офис, мало движения)',
       moderate: 'Умеренный (Легкие тренировки 1-3 дн/нед)',
       active: 'Активный (Интенсив 3-5 дн/нед)',
-      extraActive: 'Очень активный (Спорт каждый день)'
+      extraActive: 'Очень активный (Спорт каждый день)',
+      useSupplements: 'Использовать спортпит',
+      useSupplementsDesc: 'Предлагать протеин, BCAA или витамины исходя из вашего профиля'
     },
     nutrition: {
       title: 'AI Питание',

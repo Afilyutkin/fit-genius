@@ -470,10 +470,29 @@ const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, setUserProfile, 
                             <option value="Buddhism">{t.diets.buddhist}</option>
                         </select>
                     </div>
+
+                    <div className="pt-4 border-t border-slate-100 dark:border-slate-700 mt-4">
+                        <label className="flex items-center cursor-pointer group">
+                            <div className="relative">
+                                <input
+                                    type="checkbox"
+                                    className="sr-only"
+                                    checked={userProfile.useSupplements}
+                                    onChange={(e) => handleChange('useSupplements', e.target.checked)}
+                                />
+                                <div className={`block w-10 h-6 rounded-full transition-colors ${userProfile.useSupplements ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
+                                <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${userProfile.useSupplements ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                            </div>
+                            <div className="ml-3">
+                                <div className="text-sm font-bold text-slate-700 dark:text-white group-hover:text-blue-600 transition-colors">{t.useSupplements}</div>
+                                <div className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">{t.useSupplementsDesc}</div>
+                            </div>
+                        </label>
+                    </div>
                 </div>
 
             </div>
-        </div>
+        </div >
     );
 };
 

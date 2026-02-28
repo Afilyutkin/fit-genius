@@ -79,7 +79,7 @@ const geminiRest = async (
     contents: contents,
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 16384,
     }
   };
 
@@ -145,6 +145,7 @@ export const repairJson = (str: string): string => {
   let inQuote = false;
   let escaped = false;
   let repaired = "";
+  let lastStructuralChar = "";
 
   for (let i = 0; i < jsonSnippet.length; i++) {
     const char = jsonSnippet[i];
@@ -156,16 +157,27 @@ export const repairJson = (str: string): string => {
       if (char === ']') openBrackets--;
       if (char === '{') openBraces++;
       if (char === '}') openBraces--;
+      if (/[{}:,]/.test(char)) lastStructuralChar = char;
     }
     repaired += char;
   }
 
   if (inQuote) repaired += '"';
   while (openBraces > 0) {
-    if (repaired.trim().endsWith(':')) repaired += 'null';
+    const trimmed = repaired.trim();
+    if (trimmed.endsWith(':')) {
+      repaired += ' null';
+    } else if (lastStructuralChar === '{' || lastStructuralChar === ',') {
+      // If the last thing we saw was a start of an object or a comma, 
+      // and we just added a quote (or word), it's likely a property name.
+      if (trimmed.endsWith('"')) {
+        repaired += ': null';
+      }
+    }
     repaired = repaired.replace(/,\s*$/, '');
     repaired += '}';
     openBraces--;
+    lastStructuralChar = '}'; // Reset for next level
   }
   while (openBrackets > 0) {
     repaired = repaired.replace(/,\s*$/, '');
@@ -226,6 +238,33 @@ export const generateWeeklyPlan = async (
   - Physical: ${userProfile.weight}kg, ${userProfile.height}cm, ${userProfile.age}y, ${userProfile.gender}.
   - Lifestyle/Activity Level: ${userProfile.activityLevel}.
   - Schedule: ${userProfile.workoutsPerWeek} workouts/week, ${userProfile.workoutDurationMin} min duration.
+  - Sports Supplements: ${userProfile.useSupplements
+      ? `ENABLED. Generate a LOGICAL, TIME-ORDERED supplement schedule for the day.
+    Each sportsNutrition entry MUST have a "name" field that starts with the time slot in brackets, e.g.:
+      "[Утром]" / "[Morning]", "[Перед тренировкой]" / "[Pre-Workout]", "[Во время тренировки]" / "[During Workout]",
+      "[После тренировки]" / "[Post-Workout]", "[Днём]" / "[Afternoon]", "[Вечером]" / "[Evening]", "[Перед сном]" / "[Before Bed]"
+    Followed by the supplement name and dose, e.g.: "[Pre-Workout] Caffeine 200mg + Beta-Alanine 3.2g"
+
+    TRAINING DAY SCHEDULE (for sports: ${userProfile.preferredSports.join(', ')}, goals: ${userProfile.fitnessGoals.join(', ')}):
+      1. [Morning] Vitamin D3 + K2 + Omega-3 (with breakfast — foundational health)
+      2. [Pre-Workout] Caffeine + Beta-Alanine (30-45 min before — energy & endurance). Add Creatine here for strength/muscle goals.
+      3. [During Workout] Electrolytes + EAAs (if session > 60 min) OR BCAA drink (for muscle-preserving sports)
+      4. [Post-Workout] Whey Protein + fast Carbs (within 30 min — recovery & muscle synthesis). Add Creatine if not taken pre-workout.
+      5. [Evening] Magnesium Glycinate (relaxation, muscle recovery)
+      6. [Before Bed] Casein Protein OR Collagen + Glycine (slow protein release during sleep)
+
+    REST DAY SCHEDULE (no stimulants on rest days):
+      1. [Morning] Vitamin D3 + K2 + Omega-3 (with breakfast)
+      2. [Afternoon] Collagen Peptides (joint & tissue recovery)
+      3. [Evening] Magnesium Glycinate + ZMA (recovery, testosterone support, sleep)
+      4. [Before Bed] Casein Protein (muscle protein synthesis during sleep)
+
+    RULES:
+    - Choose ONLY entries that are relevant and logical for the day type and sport.
+    - Do not contradict meal timing (e.g., no protein shake right before a protein-rich meal).
+    - Adjust selections to the dietary preference: ${userProfile.dietaryPreferences} (e.g., use plant protein for vegans).
+    - Provide realistic macro values per serving for each supplement.`
+      : 'DISABLED. Return an empty array [] for sportsNutrition on every day.'}.
 
   Return ONLY a raw JSON array of 7 DayPlan objects for a full week (Monday-Sunday). 
   Respond in ${lang}. Use the precise schema provided.`;
@@ -243,7 +282,7 @@ export const generateWeeklyPlan = async (
         "lunch": { "name": "string", "calories": number, "protein": number, "fats": number, "carbs": number },
         "dinner": { "name": "string", "calories": number, "protein": number, "fats": number, "carbs": number },
         "snack": { "name": "string", "calories": number, "protein": number, "fats": number, "carbs": number },
-        "sportsNutrition": { "name": "string", "calories": number, "protein": number, "fats": number, "carbs": number }
+        "sportsNutrition": [{ "name": "string — starts with time slot e.g. [Pre-Workout] Whey Protein 30g", "calories": number, "protein": number, "fats": number, "carbs": number }]
       }, 
       "workoutTip": "string (Specific tactical advice for this workout, technique or safety)",
       "nutritionTip": "string (Specific dietary advice related to this day's meals or hydration)"
@@ -254,6 +293,7 @@ export const generateWeeklyPlan = async (
     2. Ensure meals strictly follow ${userProfile.dietaryPreferences}.
     3. Ensure workouts reflect ${userProfile.preferredSports.join(" and ")} where appropriate.
     4. Respect health constraints: ${userProfile.contraindications || "None"}.
+    5. Sports Nutrition — follow the time-ordered schedule from the system instructions. Each item must include the time slot in brackets at the start of the "name" field. Only include supplements that make logical sense for the day (training vs rest). If DISABLED: return an empty array [].
   `;
   try {
     const text = await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: prompt }] }], "application/json");
@@ -294,6 +334,42 @@ export const generateMealDetails = async (
     throw e;
   }
 };
+
+export const generateSupplementTips = async (
+  supplementName: string,
+  userProfile: UserProfile,
+  apiKey?: string,
+  language: 'en' | 'ru' = 'en'
+): Promise<Partial<MealDetails>> => {
+  const key = (apiKey || localStorage.getItem('zenith_gemini_key') || '').trim();
+  const lang = language === 'ru' ? 'Russian' : 'English';
+
+  const systemInstruction = `You are a Sports Nutrition Expert AI.
+  User profile:
+  - Sport(s): ${userProfile.preferredSports.join(', ')}
+  - Goals: ${userProfile.fitnessGoals.join(', ')}
+  - Fitness Level: ${userProfile.fitnessLevel}
+  - Dietary Preferences: ${userProfile.dietaryPreferences}
+  - Medical/Safety: ${userProfile.contraindications || "None"}
+
+  Provide expert supplement advice for "${supplementName}".
+  Return ONLY raw JSON. Respond in ${lang}.`;
+
+  const prompt = `{
+    "ingredients": ["List of key active compounds in this supplement, with dosage per serving"],
+    "recipe": "Markdown guide covering: ## How to take it\\n(timing, dose, with or without food)\\n\\n## Why it works\\n(mechanism of action, benefits for the user's specific sport and goals)\\n\\n## Combinations\\n(what it stacks well with and why)\\n\\n## Cautions\\n(interactions, contraindications, cycling advice)",
+    "tip": "One concise expert tip specific to the user's sport and goals"
+  }`;
+
+  try {
+    const text = await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: prompt }] }], "application/json");
+    return JSON.parse(repairJson(text));
+  } catch (e) {
+    console.error('[generateSupplementTips] error:', e);
+    throw e;
+  }
+};
+
 
 export const generateExerciseDetails = async (
   exerciseName: string,

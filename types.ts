@@ -37,7 +37,7 @@ export interface DayPlan {
     lunch: MealDetails;
     dinner: MealDetails;
     snack: MealDetails;
-    sportsNutrition: MealDetails;
+    sportsNutrition: MealDetails[];
   };
   workoutTip: string;
   nutritionTip: string;
@@ -63,6 +63,7 @@ export interface UserProfile {
   weeklyPlan: DayPlan[] | null;
   planLanguage?: Language;
   completedExercises: string[];
+  useSupplements: boolean;
 }
 
 export interface ChatMessage {

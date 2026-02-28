@@ -26,7 +26,8 @@ const INITIAL_PROFILE: UserProfile = {
   activityLevel: 'Moderate',
   isSetup: false,
   weeklyPlan: null,
-  completedExercises: []
+  completedExercises: [],
+  useSupplements: false
 };
 
 const DAILY_STATS: DailyStats = {
