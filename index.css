@@ -59,8 +59,21 @@
   --radius-control: 0.625rem;
 }
 
-/* Enable class-based dark mode for Tailwind v4 */
-@custom-variant dark (&:where(.dark, .dark *));
+/* Class-based dark mode.
+   Matching is the documented `:where(.dark, .dark *)`; `:not(#\#)` is bolted on
+   purely to add weight. Every other formulation is broken here:
+     - plain `:where(...)` adds no specificity, so `dark:text-brand-300` tied
+       with `text-brand-800` on the same element and the light colour won on
+       source order (the sidebar kept its light palette in dark mode);
+     - `:is(.dark, .dark *)` wins the tie but Chromium then fails to recompute
+       those rules when the class on <html> is removed, so switching back to
+       light left the dark text colours painted;
+     - `.dark &` is flattened by the release build's minifier into a bare
+       `.dark\:…{}` rule with the ancestor condition dropped, applying every
+       dark utility in light mode.
+   `#\#` is an id no element can have, so `:not()` always matches and only its
+   specificity (1,0,0) is borrowed. */
+@custom-variant dark (&:where(.dark, .dark *):not(#\#));
 
 @layer base {
   html {

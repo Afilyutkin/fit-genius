@@ -145,6 +145,16 @@ const App: React.FC = () => {
     const root = window.document.documentElement;
     root.classList.remove('light', 'dark');
     root.classList.add(theme);
+
+    // Chromium does not reliably recalculate descendants styled through the
+    // `dark:` variant when this class changes: backgrounds updated while text
+    // stayed painted in the previous theme's colours. Detaching the root from
+    // layout for one synchronous pass rebuilds the style tree. Both writes
+    // happen in the same task with no paint in between, so nothing flashes.
+    const previousDisplay = root.style.display;
+    root.style.display = 'none';
+    void root.offsetHeight;
+    root.style.display = previousDisplay;
   }, [theme]);
 
   useEffect(() => {
