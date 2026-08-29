@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, Bot, Sparkles } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { X, Send, Bot, Sparkles, AlertTriangle, RefreshCw } from 'lucide-react';
 import { ChatMessage, UserProfile, Language } from '../types';
 import { generateCoachResponse, refinePlanWithConsultation } from '../services/geminiService';
 import MarkdownContent from './MarkdownContent';
@@ -16,208 +16,238 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize greeting only once on mount
+  const isRu = language === 'ru';
+  const name = userProfile.name || (isRu ? 'атлет' : 'athlete');
+
+  const greeting = isRu
+    ? `Привет, ${name}! Я ваш тренер Fit Genius. Ваша цель: ${userProfile.workoutsPerWeek} тренировок в неделю. Начнём?`
+    : `Hi ${name}! I'm your Fit Genius Coach. Your goal: ${userProfile.workoutsPerWeek} workouts a week. Ready to start?`;
+
+  // Keep the greeting in the current language until the conversation actually starts.
   useEffect(() => {
-    const greeting = language === 'ru'
-      ? `Привет, ${userProfile.name}! Я ваш тренер Fit Genius. Я заметил, что у вас цель — ${userProfile.workoutsPerWeek} тренировок в неделю. Готовы начать?`
-      : `Hi ${userProfile.name}! I'm your Fit Genius Coach. I noticed you have a goal of ${userProfile.workoutsPerWeek} workouts this week. Ready to crush it?`;
-
-    setMessages([{
-      id: '1',
-      role: 'model',
-      text: greeting,
-      timestamp: new Date()
-    }]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // intentionally only on mount
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+    setMessages(prev => {
+      const started = prev.some(m => m.role === 'user');
+      if (started) return prev;
+      return [{ id: 'greeting', role: 'model', text: greeting, timestamp: new Date() }];
+    });
+  }, [greeting]);
 
   useEffect(() => {
-    scrollToBottom();
+    if (isOpen) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isOpen]);
 
+  // Escape closes the panel; focus moves into the field when it opens.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsOpen(false); };
+    window.addEventListener('keydown', onKey);
+    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 250);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.clearTimeout(focusTimer);
+    };
+  }, [isOpen]);
+
+  const pushMessage = useCallback((msg: Omit<ChatMessage, 'timestamp'>) => {
+    setMessages(prev => [...prev, { ...msg, timestamp: new Date() }]);
+  }, []);
+
   const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+    const text = input.trim();
+    if (!text || isLoading) return;
 
     if (!apiKey) {
-      setMessages(prev => [...prev, {
+      pushMessage({
         id: `err-${Date.now()}`,
         role: 'model',
-        text: language === 'ru'
-          ? '⚠️ API ключ не настроен. Перейдите в Профиль и добавьте Gemini API ключ.'
-          : '⚠️ API key not configured. Go to Profile and add your Gemini API key.',
-        timestamp: new Date()
-      }]);
+        isError: true,
+        text: isRu
+          ? 'API ключ не настроен. Перейдите в Профиль и добавьте ключ Gemini.'
+          : 'API key not configured. Go to Profile and add your Gemini API key.',
+      });
       return;
     }
 
-    const userMsg: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      text: input,
-      timestamp: new Date()
-    };
-
-    setMessages(prev => [...prev, userMsg]);
+    const history = messages;
+    pushMessage({ id: `u-${Date.now()}`, role: 'user', text });
     setInput('');
     setIsLoading(true);
 
     try {
-      const responseText = await generateCoachResponse(messages, userProfile, input, apiKey, language);
-      setMessages(prev => [...prev, {
-        id: `ai-${Date.now()}`,
-        role: 'model',
-        text: responseText,
-        timestamp: new Date()
-      }]);
+      const responseText = await generateCoachResponse(history, userProfile, text, apiKey, language);
+      pushMessage({ id: `ai-${Date.now()}`, role: 'model', text: responseText });
     } catch (e: any) {
-      setMessages(prev => [...prev, {
+      pushMessage({
         id: `err-${Date.now()}`,
         role: 'model',
-        text: language === 'ru'
-          ? `❌ Ошибка: ${e?.message || 'Неизвестная ошибка'}`
-          : `❌ Error: ${e?.message || 'Unknown error'}`,
-        timestamp: new Date()
-      }]);
+        isError: true,
+        text: e?.message || (isRu ? 'Неизвестная ошибка' : 'Unknown error'),
+      });
     } finally {
       setIsLoading(false);
     }
   };
+
+  const canSync = !!apiKey && !!userProfile.weeklyPlan?.length && messages.some(m => m.role === 'user');
 
   const handleSyncPlan = async () => {
-    if (messages.length < 2 || isLoading) return;
-    setIsLoading(true);
+    if (!canSync || isSyncing || isLoading) return;
+    setIsSyncing(true);
     try {
       const updatedPlan = await refinePlanWithConsultation(messages, userProfile, apiKey, language);
-      setUserProfile(prev => ({ ...prev, weeklyPlan: updatedPlan }));
-
-      setMessages(prev => [...prev, {
+      setUserProfile(prev => ({ ...prev, weeklyPlan: updatedPlan, planLanguage: language }));
+      pushMessage({
         id: `sync-${Date.now()}`,
         role: 'model',
-        text: language === 'ru'
-          ? '✅ План успешно обновлен на основе нашей консультации!'
-          : '✅ Plan successfully updated based on our consultation!',
-        timestamp: new Date()
-      }]);
+        text: isRu
+          ? 'Готово. План обновлён по итогам нашей консультации.'
+          : 'Done. Your plan is updated from our consultation.',
+      });
     } catch (e: any) {
-      setMessages(prev => [...prev, {
+      pushMessage({
         id: `err-sync-${Date.now()}`,
         role: 'model',
-        text: language === 'ru'
-          ? `❌ Не удалось обновить план: ${e?.message}`
-          : `❌ Failed to update plan: ${e?.message}`,
-        timestamp: new Date()
-      }]);
+        isError: true,
+        text: (isRu ? 'Не удалось обновить план: ' : 'Failed to update the plan: ') + (e?.message || ''),
+      });
     } finally {
-      setIsLoading(false);
+      setIsSyncing(false);
     }
   };
+
+  const busy = isLoading || isSyncing;
 
   return (
     <>
-      {/* ============================================================
-          FAB — hidden when chat is open
-          Mobile: positioned above bottom nav (bottom-20 right-4)
-          Desktop: standard bottom-right (bottom-6 right-6)
-      ============================================================ */}
+      {/* Floating action button — sits above the mobile bottom nav */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed right-4 lg:bottom-6 lg:right-6 w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full shadow-2xl flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-transform z-40"
-          style={{ bottom: 'calc(4rem + max(0.5rem, env(safe-area-inset-bottom)))' }}
+          aria-label={isRu ? 'Открыть AI тренера' : 'Open AI coach'}
+          className="fixed right-4 lg:bottom-6 lg:right-6 w-14 h-14 rounded-full z-40
+                     bg-brand-300 text-slate-950
+                     shadow-xl shadow-brand-500/40 flex items-center justify-center
+                     hover:scale-105 active:scale-95 transition-transform"
+          style={{ bottom: 'calc(4.5rem + max(0.375rem, env(safe-area-inset-bottom)))' }}
         >
-          <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white" />
-          <Sparkles size={24} fill="currentColor" className="text-white opacity-90" />
+          <Sparkles size={22} fill="currentColor" />
         </button>
       )}
 
-      {/* ============================================================
-          Chat window
-          Mobile: full-screen, slides up from bottom (translate-y animation)
-          Desktop: fixed panel at bottom-right (w-96, h-[600px])
-      ============================================================ */}
+      {/* Chat panel */}
       <div
-        className={`fixed z-[60] flex flex-col
-          bg-white dark:bg-slate-900 shadow-2xl
-          border border-slate-100 dark:border-slate-800
-          transition-all duration-300 ease-in-out
+        role="dialog"
+        aria-modal="true"
+        aria-label="Fit Genius Coach"
+        aria-hidden={!isOpen}
+        className={`fixed z-[60] flex flex-col bg-white dark:bg-slate-900
+          border border-slate-200/70 dark:border-slate-800 shadow-2xl
+          transition-all duration-300 ease-out
           inset-0 rounded-none
-          lg:inset-auto lg:bottom-6 lg:right-6 lg:w-96 lg:h-[600px] lg:rounded-3xl
+          lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[400px] lg:h-[620px] lg:rounded-[var(--radius-panel)]
           ${isOpen
             ? 'translate-y-0 opacity-100 lg:scale-100'
-            : 'translate-y-full lg:translate-y-0 lg:scale-0 opacity-0 pointer-events-none lg:origin-bottom-right'
+            : 'translate-y-full lg:translate-y-0 lg:scale-95 opacity-0 pointer-events-none lg:origin-bottom-right'
           }`}
       >
         {/* Header */}
-        <div className="h-16 bg-gradient-to-r from-blue-600 to-indigo-600 lg:rounded-t-3xl flex items-center justify-between px-5 shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center">
-              <Bot size={18} className="text-white" />
+        <div className="h-16 bg-slate-950 border-b border-brand-500/30 lg:rounded-t-[var(--radius-panel)]
+                        flex items-center justify-between px-5 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-brand-300 rounded-full flex items-center justify-center">
+              <Bot size={18} className="text-slate-950" />
             </div>
             <div>
-              <h3 className="text-white font-semibold text-sm">Fit Genius Coach</h3>
-              <p className="text-blue-100 text-xs">AI Agent • Online</p>
+              <h3 className="font-display text-base font-semibold uppercase text-white leading-tight">Fit Genius Coach</h3>
+              <p className="eyebrow text-[10px] text-brand-300 leading-tight mt-0.5">
+                {busy ? (isRu ? 'печатает' : 'typing') : (isRu ? 'AI тренер' : 'AI coach')}
+              </p>
             </div>
           </div>
           <button
             onClick={() => setIsOpen(false)}
-            className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-colors"
+            aria-label={isRu ? 'Закрыть чат' : 'Close chat'}
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/25 text-white transition-colors"
           >
             <X size={20} />
           </button>
         </div>
 
-        {/* Sync Action - only show if there's enough history and no loading */}
-        {messages.length >= 3 && (
-          <div className="bg-blue-50 dark:bg-blue-900/20 px-4 py-2 flex items-center justify-between border-b border-blue-100 dark:border-blue-800 animate-in slide-in-from-top duration-500">
-            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
-              {language === 'ru' ? 'Синхронизировать план?' : 'Sync plan with chat?'}
+        {/* Sync plan bar */}
+        {canSync && (
+          <div className="flex items-center justify-between gap-3 px-4 py-2.5
+                          bg-brand-300/15 border-b border-brand-500/25">
+            <span className="text-xs font-semibold text-brand-800 dark:text-brand-300">
+              {isRu ? 'Обновить план по итогам чата?' : 'Apply this chat to your plan?'}
             </span>
             <button
               onClick={handleSyncPlan}
-              disabled={isLoading}
-              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black rounded-lg transition-all shadow-sm disabled:opacity-50"
+              disabled={busy}
+              className="btn-primary px-3 py-1.5 text-xs"
             >
-              {isLoading ? (language === 'ru' ? 'ОБНОВЛЕНИЕ...' : 'UPDATING...') : (language === 'ru' ? 'ОБНОВИТЬ' : 'UPDATE NOW')}
+              {isSyncing && <RefreshCw size={12} className="animate-spin" />}
+              {isSyncing ? (isRu ? 'Обновляем…' : 'Updating…') : (isRu ? 'Обновить' : 'Update')}
             </button>
           </div>
         )}
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-slate-950">
-          {messages.map((msg) => (
-            <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[85%] rounded-[1.5rem] px-5 py-4 text-sm leading-relaxed shadow-sm transition-all ${msg.role === 'user'
-                ? 'bg-blue-600 text-white rounded-br-none shadow-blue-100 dark:shadow-none'
-                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-100 dark:border-slate-700/50 rounded-bl-none'
-                }`}>
-                {msg.role === 'model' && (
-                  <div className="flex items-center gap-1.5 mb-2 text-[10px] font-black text-blue-500/70 dark:text-blue-400/70 uppercase tracking-widest">
-                    <Sparkles size={10} className="fill-current text-blue-400" />
-                    Coach Insight
+        <div
+          className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50 dark:bg-slate-950"
+          aria-live="polite"
+        >
+          {messages.map((msg) => {
+            if (msg.isError) {
+              return (
+                <div key={msg.id} className="flex justify-start">
+                  <div className="max-w-[88%] rounded-2xl rounded-bl-md px-4 py-3 text-sm
+                                  bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300
+                                  border border-red-200 dark:border-red-900/60 flex gap-2.5">
+                    <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                    <span className="leading-relaxed break-words">{msg.text}</span>
                   </div>
-                )}
-                {msg.role === 'model' ? (
-                  <MarkdownContent content={msg.text.replace(/```json[\s\S]*?```/g, '').trim()} />
-                ) : (
-                  <div className="font-medium whitespace-pre-wrap">{msg.text}</div>
-                )}
-              </div>
-            </div>
-          ))}
+                </div>
+              );
+            }
 
-          {/* Typing indicator */}
-          {isLoading && (
+            const isUser = msg.role === 'user';
+            return (
+              <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[88%] px-4 py-3 text-sm shadow-sm ${isUser
+                  ? 'bg-brand-300 text-slate-950 rounded-2xl rounded-br-md'
+                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200/70 dark:border-slate-700 rounded-2xl rounded-bl-md'
+                  }`}>
+                  {isUser ? (
+                    <div className="whitespace-pre-wrap break-words">{msg.text}</div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-1.5 mb-1.5 eyebrow text-brand-700 dark:text-brand-400">
+                        <Sparkles size={10} className="fill-current" />
+                        {isRu ? 'Совет тренера' : 'Coach insight'}
+                      </div>
+                      <MarkdownContent content={msg.text.replace(/```json[\s\S]*?```/g, '').trim()} />
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {busy && (
             <div className="flex justify-start">
-              <div className="bg-white dark:bg-slate-800 px-4 py-3 rounded-2xl rounded-bl-none border border-slate-100 dark:border-slate-700 shadow-sm flex items-center space-x-2">
-                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              <div className="bg-white dark:bg-slate-800 px-4 py-3 rounded-2xl rounded-bl-md
+                              border border-slate-200/70 dark:border-slate-700 shadow-sm flex items-center gap-1.5">
+                {[0, 150, 300].map(delay => (
+                  <span
+                    key={delay}
+                    className="w-2 h-2 bg-brand-500 rounded-full animate-bounce"
+                    style={{ animationDelay: `${delay}ms` }}
+                  />
+                ))}
               </div>
             </div>
           )}
@@ -225,25 +255,34 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
         </div>
 
         {/* Input */}
-        <div className="p-4 bg-white dark:bg-slate-900 lg:rounded-b-3xl border-t border-slate-100 dark:border-slate-800 shrink-0">
-          <div className="flex items-center space-x-2 bg-slate-100 dark:bg-slate-800 rounded-full px-4 py-2 focus-within:ring-2 focus-within:ring-blue-500/30 transition-all">
+        <div className="p-3 bg-white dark:bg-slate-900 lg:rounded-b-[var(--radius-panel)]
+                        border-t border-slate-200/70 dark:border-slate-800 shrink-0 pb-safe lg:pb-3">
+          <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 rounded-full pl-4 pr-1.5 py-1.5
+                          focus-within:ring-2 focus-within:ring-brand-500/30 transition-all">
+            <label htmlFor="coach-input" className="sr-only">
+              {isRu ? 'Сообщение тренеру' : 'Message to the coach'}
+            </label>
             <input
+              id="coach-input"
+              ref={inputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder={language === 'ru' ? 'Спросите о тренировке...' : 'Ask about workout...'}
-              className="flex-1 bg-transparent border-none outline-none text-sm text-slate-700 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 h-8"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
+              placeholder={isRu ? 'Спросите о тренировке…' : 'Ask about your workout…'}
+              className="flex-1 bg-transparent border-none outline-none text-sm h-9
+                         text-slate-700 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500"
             />
             <button
               onClick={handleSend}
-              disabled={!input.trim() || isLoading}
-              className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${input.trim() && !isLoading
-                ? 'bg-blue-600 text-white hover:bg-blue-700'
+              disabled={!input.trim() || busy}
+              aria-label={isRu ? 'Отправить' : 'Send'}
+              className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors ${input.trim() && !busy
+                ? 'bg-brand-300 text-slate-950 hover:bg-brand-200'
                 : 'bg-slate-200 dark:bg-slate-700 text-slate-400'
                 }`}
             >
-              <Send size={14} />
+              <Send size={15} />
             </button>
           </div>
         </div>
