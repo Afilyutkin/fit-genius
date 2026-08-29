@@ -12,28 +12,51 @@ COMMUNICATION STYLE:
 - Never use em-dash or en-dash characters. Use a comma, a period or a regular hyphen instead.
 `;
 
-// Ordered by preference — stable ids first, previews only as a fallback
+// Ordered by preference, newest first. Google retires ids on its own schedule,
+// so this is only a ranking: what actually gets called is intersected with the
+// live ListModels response, and any id the API rejects at call time is dropped
+// and retried (see MODEL_BLACKLIST).
 const MODEL_PREFERENCES = [
+  'gemini-3.6-flash',
+  'gemini-3-flash',
   'gemini-2.5-flash',
-  'gemini-2.5-flash-preview-05-20',
   'gemini-2.5-pro',
   'gemini-2.0-flash',
   'gemini-2.0-flash-lite',
-  'gemini-1.5-flash',
-  'gemini-1.5-flash-latest',
-  'gemini-1.5-pro',
-  'gemini-pro',
+  'gemini-flash-latest',
 ];
 
 /** Requests that hang forever would leave the UI stuck on a spinner. */
 const REQUEST_TIMEOUT_MS = 90_000;
 
-let _modelCache: { key: string; model: string } | null = null;
+/** How many different models one request may try before failing. */
+const MAX_MODEL_ATTEMPTS = 3;
 
-async function resolveModel(apiKey: string): Promise<string> {
+let _modelCache: { key: string; models: string[] } | null = null;
+
+/**
+ * Ids that ListModels advertises but generateContent refuses, e.g.
+ * "This model is no longer available to new users". Only a live call reveals
+ * these, so they are remembered for the rest of the session.
+ */
+const MODEL_BLACKLIST = new Set<string>();
+
+/** True when the API is telling us to pick another model, not to give up. */
+const isModelUnavailable = (status: number, message: string): boolean =>
+  status === 404 ||
+  /no longer available|not found|not supported|deprecated|does not exist/i.test(message);
+
+/**
+ * Ordered list of models this key may call, preferred first. Cached per key;
+ * pass `refresh` after a model turned out to be dead.
+ */
+async function resolveModels(apiKey: string, refresh = false): Promise<string[]> {
   const key = apiKey.trim();
-  if (_modelCache?.key === key) return _modelCache.model;
+  if (!refresh && _modelCache?.key === key) {
+    return _modelCache.models.filter(m => !MODEL_BLACKLIST.has(m));
+  }
 
+  let ranked: string[] = [];
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}&pageSize=100`,
@@ -41,31 +64,33 @@ async function resolveModel(apiKey: string): Promise<string> {
     );
     if (res.ok) {
       const data = await res.json();
-      const available = new Set<string>(
-        (data.models || [])
-          .filter((m: any) =>
-            Array.isArray(m.supportedGenerationMethods) &&
-            m.supportedGenerationMethods.includes('generateContent')
-          )
-          .map((m: any) => (m.name as string).replace('models/', ''))
-      );
-      for (const pref of MODEL_PREFERENCES) {
-        if (available.has(pref)) {
-          _modelCache = { key, model: pref };
-          console.log('[Fit Genius] Using model:', pref);
-          return pref;
-        }
-      }
-      const first = [...available].find(m => m.includes('flash') || m.includes('pro'));
-      if (first) {
-        _modelCache = { key, model: first };
-        return first;
-      }
+      const available: string[] = (data.models || [])
+        .filter((m: any) =>
+          Array.isArray(m.supportedGenerationMethods) &&
+          m.supportedGenerationMethods.includes('generateContent')
+        )
+        .map((m: any) => (m.name as string).replace('models/', ''));
+
+      const availableSet = new Set(available);
+      // Preferred ids that exist, then any other flash/pro model as a tail, so
+      // a future rename still leaves something callable.
+      ranked = [
+        ...MODEL_PREFERENCES.filter(m => availableSet.has(m)),
+        ...available.filter(m =>
+          !MODEL_PREFERENCES.includes(m) &&
+          (m.includes('flash') || m.includes('pro')) &&
+          !m.includes('vision') && !m.includes('embedding') && !m.includes('image')
+        ),
+      ];
     }
   } catch (e) {
-    console.warn('[resolveModel] failed:', e);
+    console.warn('[resolveModels] listing failed:', e);
   }
-  return 'gemini-2.0-flash';
+
+  if (ranked.length === 0) ranked = [...MODEL_PREFERENCES];
+
+  _modelCache = { key, models: ranked };
+  return ranked.filter(m => !MODEL_BLACKLIST.has(m));
 }
 
 /** Turns any transport failure into a message a user can act on. */
@@ -89,9 +114,6 @@ const geminiRest = async (
   const key = apiKey?.trim();
   if (!key) throw new Error('No Gemini API key configured. Add one in your Profile.');
 
-  const model = await resolveModel(key);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
-
   const body: any = {
     systemInstruction: { parts: [{ text: systemInstruction }] },
     contents: contents,
@@ -105,52 +127,83 @@ const geminiRest = async (
     body.generationConfig.responseMimeType = "application/json";
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  let res: Response;
-  let data: any;
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-    data = await res.json().catch(() => ({}));
-  } catch (e) {
-    throw describeError(e);
-  } finally {
-    clearTimeout(timer);
+  let models = await resolveModels(key);
+  if (models.length === 0) {
+    MODEL_BLACKLIST.clear();               // nothing left to try: start over
+    models = await resolveModels(key, true);
   }
 
-  if (!res.ok) {
-    const apiMsg = data?.error?.message;
-    if (res.status === 400 && /api key/i.test(apiMsg || '')) {
-      throw new Error('The Gemini API key was rejected. Check the key in your Profile.');
+  let lastUnavailable: Error | null = null;
+
+  // Walk the candidate list: a model that ListModels advertises can still be
+  // closed to this key ("no longer available to new users"), and the only way
+  // to find out is to call it. Retiring it here keeps the app working without
+  // the user touching anything.
+  for (const model of models.slice(0, MAX_MODEL_ATTEMPTS)) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    let res: Response;
+    let data: any;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      data = await res.json().catch(() => ({}));
+    } catch (e) {
+      throw describeError(e);
+    } finally {
+      clearTimeout(timer);
     }
-    if (res.status === 429) {
-      throw new Error('Gemini rate limit reached. Wait a minute and try again.');
+
+    if (!res.ok) {
+      const apiMsg: string = data?.error?.message || '';
+
+      if (isModelUnavailable(res.status, apiMsg)) {
+        console.warn(`[Fit Genius] Model ${model} unavailable, trying the next one.`, apiMsg);
+        MODEL_BLACKLIST.add(model);
+        lastUnavailable = new Error(apiMsg || `Model ${model} is unavailable.`);
+        continue;
+      }
+      if (res.status === 400 && /api key/i.test(apiMsg)) {
+        throw new Error('The Gemini API key was rejected. Check the key in your Profile.');
+      }
+      if (res.status === 429) {
+        throw new Error('Gemini rate limit reached. Wait a minute and try again.');
+      }
+      throw new Error(apiMsg || `Gemini request failed (HTTP ${res.status}).`);
     }
-    throw new Error(apiMsg || `Gemini request failed (HTTP ${res.status}).`);
+
+    const candidate = data?.candidates?.[0];
+    // Long answers arrive split across several parts — concatenate them all,
+    // otherwise JSON plans come back truncated.
+    const text: string = (candidate?.content?.parts || [])
+      .map((p: any) => p?.text || '')
+      .join('');
+
+    if (!text) {
+      const blocked = data?.promptFeedback?.blockReason || candidate?.finishReason;
+      throw new Error(
+        blocked && blocked !== 'STOP'
+          ? `Gemini returned no content (reason: ${blocked}).`
+          : 'Gemini returned an empty response. Please try again.'
+      );
+    }
+
+    console.log('[Fit Genius] Model used:', model);
+    return text;
   }
 
-  const candidate = data?.candidates?.[0];
-  // Long answers arrive split across several parts — concatenate them all,
-  // otherwise JSON plans come back truncated.
-  const text: string = (candidate?.content?.parts || [])
-    .map((p: any) => p?.text || '')
-    .join('');
-
-  if (!text) {
-    const blocked = data?.promptFeedback?.blockReason || candidate?.finishReason;
-    throw new Error(
-      blocked && blocked !== 'STOP'
-        ? `Gemini returned no content (reason: ${blocked}).`
-        : 'Gemini returned an empty response. Please try again.'
-    );
-  }
-  return text;
+  throw new Error(
+    lastUnavailable
+      ? `No usable Gemini model for this key. Last response: ${lastUnavailable.message}`
+      : 'No Gemini model available for this API key.'
+  );
 };
 
 /**
@@ -456,7 +509,7 @@ export const generateWeeklyPlan = async (
         "lunch": { "name": "string", "calories": number, "protein": number, "fats": number, "carbs": number },
         "dinner": { "name": "string", "calories": number, "protein": number, "fats": number, "carbs": number },
         "snack": { "name": "string", "calories": number, "protein": number, "fats": number, "carbs": number },
-        "sportsNutrition": [{ "name": "string — starts with time slot e.g. [Pre-Workout] Whey Protein 30g", "calories": number, "protein": number, "fats": number, "carbs": number }]
+        "sportsNutrition": [{ "name": "string, starts with time slot e.g. [Pre-Workout] Whey Protein 30g", "calories": number, "protein": number, "fats": number, "carbs": number }]
       }, 
       "workoutTip": "string (Specific tactical advice for this workout, technique or safety)",
       "nutritionTip": "string (Specific dietary advice related to this day's meals or hydration)"
