@@ -476,7 +476,7 @@ const DashboardView: React.FC<DashboardProps> = ({
               <StatCard title={t.steps} value={isWatchConnected ? '8,642' : '-'} unit={isRu ? 'шаг.' : 'steps'} icon={Footprints}
                 color="text-orange-600 dark:text-orange-400" bg="bg-orange-100 dark:bg-orange-950/50"
                 subValue={isWatchConnected ? 'Goal: 10,000' : (isRu ? 'Нет устройства' : 'No device')} />
-              <StatCard title={t.activeBurn} value={stats.caloriesBurned} unit="kcal" icon={Flame}
+              <StatCard title={t.activeBurn} value={stats.caloriesBurned} unit={isRu ? 'ккал' : 'kcal'} icon={Flame}
                 color="text-red-600 dark:text-red-400" bg="bg-red-100 dark:bg-red-950/50"
                 subValue={`${isRu ? 'Цель' : 'Goal'}: ${stats.caloriesGoal}`} />
               <StatCard title={t.sleep} value={isWatchConnected ? '7h 12m' : '-'} unit="" icon={Clock}

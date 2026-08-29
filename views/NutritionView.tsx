@@ -68,21 +68,24 @@ const MealCard: React.FC<{
                     <h3 className="font-display text-lg font-semibold uppercase tracking-wide text-slate-900 dark:text-white break-words mt-0.5">
                         {meal.name || (isRu ? 'Без названия' : 'Unnamed')}
                     </h3>
-                    {/* Macros as separate readouts: a dot-separated string is a metadata smear */}
+                    {/* Macros as separate readouts: a dot-separated string is a metadata smear.
+                        Labels are spelled out. The previous "g P" under `uppercase`
+                        rendered as "GP", which reads as nothing at all. */}
                     <div className="flex flex-wrap items-center gap-1.5 mt-2">
                         <span className="chip bg-flame-500/10 text-flame-700 dark:text-flame-400">
                             <Flame size={12} />
                             <span className="stat text-sm">{meal.calories}</span>
-                            <span className="text-[10px] uppercase tracking-wide opacity-80">kcal</span>
+                            <span className="text-[11px] opacity-80">{t.kcal}</span>
                         </span>
                         {[
-                            { key: 'P', value: meal.protein },
-                            { key: 'C', value: meal.carbs },
-                            { key: 'F', value: meal.fats },
+                            { label: t.protein, value: meal.protein },
+                            { label: t.fats, value: meal.fats },
+                            { label: t.carbs, value: meal.carbs },
                         ].map(macro => (
-                            <span key={macro.key} className="chip surface-muted text-slate-600 dark:text-slate-300">
+                            <span key={macro.label} className="chip surface-muted text-slate-600 dark:text-slate-300">
+                                <span className="text-[11px] opacity-70">{macro.label}</span>
                                 <span className="stat text-sm">{macro.value}</span>
-                                <span className="text-[10px] uppercase tracking-wide opacity-70">g {macro.key}</span>
+                                <span className="text-[11px] opacity-70">{t.gram}</span>
                             </span>
                         ))}
                     </div>
@@ -391,7 +394,7 @@ const NutritionView: React.FC<NutritionViewProps> = ({
                             <div className="stat text-3xl text-slate-900 dark:text-white">
                                 <AnimatedNumber value={currentDayPlan.totalCalories} />
                             </div>
-                            <p className="eyebrow mt-1">kcal</p>
+                            <p className="eyebrow mt-1">{t.kcal}</p>
                         </div>
                     </div>
 
