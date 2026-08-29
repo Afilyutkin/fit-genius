@@ -12,7 +12,7 @@ export const translations = {
       darkMode: 'Dark Mode'
     },
     goals: {
-      label: 'Main Fitness Goals (Max 2)',
+      label: 'Main Fitness Goals (Max 5)',
       strength: 'Strength',
       endurance: 'Endurance',
       flexibility: 'Flexibility',
@@ -243,7 +243,7 @@ export const translations = {
       darkMode: 'Тёмная тема'
     },
     goals: {
-      label: 'Основная цель (макс 2)',
+      label: 'Основные цели (макс 5)',
       strength: 'Сила',
       endurance: 'Выносливость',
       flexibility: 'Гибкость',
