@@ -4,10 +4,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-  <meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#f7f8f8" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0a0c0f" media="(prefers-color-scheme: dark)" />
   <title>Fit Genius</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <meta name="description" content="Fit Genius — AI health coach that builds your weekly workout and nutrition plan." />
+  <script>
+    // Apply the saved theme before first paint, otherwise the app flashes
+    // light and then repaints dark once React mounts.
+    (function () {
+      try {
+        var saved = localStorage.getItem('zenith_theme');
+        var theme = (saved === 'light' || saved === 'dark')
+          ? saved
+          : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.classList.add(theme);
+      } catch (e) {
+        document.documentElement.classList.add('light');
+      }
+    })();
+  </script>
 </head>
 
 <body>

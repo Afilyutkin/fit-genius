@@ -71,6 +71,8 @@ export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
   timestamp: Date;
+  /** Rendered as a failure notice instead of coach advice. */
+  isError?: boolean;
 }
 
 export interface Achievement {
