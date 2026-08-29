@@ -142,7 +142,7 @@ const ExerciseCard: React.FC<{
                     ) : exercise.notes ? (
                         <div className="surface-muted rounded-2xl p-5">
                             <div className="flex items-center gap-2 mb-3 eyebrow">
-                                <Info size={14} className="text-brand-500" /> {t.instructionsTitle}
+                                <Info size={14} className="text-brand-700 dark:text-brand-400" /> {t.instructionsTitle}
                             </div>
                             <div className="text-slate-700 dark:text-slate-300">
                                 <MarkdownContent content={exercise.notes} />
@@ -271,16 +271,16 @@ const WorkoutsView: React.FC<WorkoutsViewProps> = ({ userProfile, setUserProfile
             {/* Language mismatch banner */}
             {hasWeeklyPlan && userProfile.planLanguage && userProfile.planLanguage !== language && (
                 <div className="card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4
-                                border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30">
+                                border-brand-400/60 dark:border-brand-700 bg-brand-50 dark:bg-brand-950/40">
                     <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center text-white shrink-0">
+                        <div className="w-9 h-9 rounded-xl bg-brand-300 flex items-center justify-center text-slate-950 shrink-0">
                             <Wand2 size={18} />
                         </div>
-                        <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                        <p className="text-sm font-semibold text-brand-900 dark:text-brand-200">
                             {common.translatePrompt}
                         </p>
                     </div>
-                    <button onClick={handleGenerate} disabled={loading} className="btn bg-amber-500 text-white hover:bg-amber-600 shrink-0">
+                    <button onClick={handleGenerate} disabled={loading} className="btn-primary shrink-0">
                         {loading ? <RefreshCw size={15} className="animate-spin" /> : <Wand2 size={15} />}
                         {common.refresh}
                     </button>
@@ -351,7 +351,7 @@ const WorkoutsView: React.FC<WorkoutsViewProps> = ({ userProfile, setUserProfile
                 <div className="py-20 flex flex-col items-center justify-center gap-6">
                     <div className="relative">
                         <div className="w-20 h-20 rounded-full border-[5px] border-slate-200 dark:border-slate-800 border-t-brand-500 animate-spin" />
-                        <Zap size={26} className="absolute inset-0 m-auto text-brand-500" />
+                        <Zap size={26} className="absolute inset-0 m-auto text-brand-700 dark:text-brand-400" />
                     </div>
                     <div className="text-center">
                         <h3 className="text-lg font-bold text-slate-900 dark:text-white">{t.optimizing}</h3>

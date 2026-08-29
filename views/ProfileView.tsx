@@ -208,12 +208,14 @@ const ProfileView: React.FC<ProfileViewProps> = ({
             )}
 
             {/* ── API key ───────────────────────────────────────── */}
+            {/* The unset state is signalled with the brand accent, not a second
+                warning colour: one accent per page (Colour Consistency Lock). */}
             <section className={`panel p-6 sm:p-8 ${!apiKey
-                ? 'border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20'
+                ? 'border-brand-400 dark:border-brand-600 ring-2 ring-brand-300/40'
                 : ''}`}>
                 <div className="flex flex-wrap items-center gap-3 mb-2">
                     <h2 className="font-display text-xl font-semibold uppercase text-slate-900 dark:text-white flex items-center gap-2.5">
-                        <Key size={19} className={apiKey ? 'text-brand-700 dark:text-brand-400' : 'text-amber-500'} />
+                        <Key size={19} className="text-brand-700 dark:text-brand-300" />
                         {t.apiKeyConfig}
                     </h2>
                     {keyStatus === 'valid' ? (
@@ -222,7 +224,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                             {t.connected}
                         </span>
                     ) : !apiKey ? (
-                        <span className="chip bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900">
+                        <span className="chip bg-slate-900 text-brand-300 border-slate-800 dark:bg-slate-800">
                             {isRu ? 'Шаг 1, обязательно' : 'Step 1, required'}
                         </span>
                     ) : null}
@@ -273,9 +275,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                         <button
                             onClick={() => handleCheckKey()}
                             disabled={keyStatus === 'checking' || !tempKey}
-                            className={keyStatus === 'valid'
-                                ? 'btn-primary px-5 py-3'
-                                : 'btn px-5 py-3 text-slate-950 bg-amber-400 hover:bg-amber-300'}
+                            className="btn-primary px-5 py-3"
                         >
                             {keyStatus === 'checking' ? <RefreshCw className="animate-spin" size={16} /> : <Check size={16} strokeWidth={3} />}
                             {keyStatus === 'valid' ? (isRu ? 'Проверить' : 'Re-check') : t.connect}
@@ -373,7 +373,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                                             className={`chip ${isSelected
                                                 ? 'bg-brand-300 text-slate-950 border-brand-300'
                                                 : isDisabled
-                                                    ? 'bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800 cursor-not-allowed'
+                                                    ? 'bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800 cursor-not-allowed'
                                                     : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-brand-400'}`}
                                         >
                                             {goal.label}
