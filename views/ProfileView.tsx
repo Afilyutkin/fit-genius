@@ -8,6 +8,9 @@ import {
 import { validateApiKey, generateWeeklyPlan } from '../services/geminiService';
 import { getTranslation } from '../utils/translations';
 
+/** How many fitness goals the plan generator accepts at once. */
+const MAX_GOALS = 5;
+
 interface ProfileViewProps {
     userProfile: UserProfile;
     setUserProfile: React.Dispatch<React.SetStateAction<UserProfile>>;
@@ -126,7 +129,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
         const currentGoals = userProfile.fitnessGoals || [];
         if (currentGoals.includes(goalKey)) {
             handleChange('fitnessGoals', currentGoals.filter(g => g !== goalKey));
-        } else if (currentGoals.length < 2) {
+        } else if (currentGoals.length < MAX_GOALS) {
             handleChange('fitnessGoals', [...currentGoals, goalKey]);
         }
     };
@@ -176,7 +179,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
         { key: 'Lose Weight', label: tGoals.weightLoss },
     ];
 
-    const goalsFull = userProfile.fitnessGoals.length >= 2;
+    const goalsFull = userProfile.fitnessGoals.length >= MAX_GOALS;
 
     return (
         <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
