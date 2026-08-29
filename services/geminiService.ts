@@ -9,13 +9,13 @@ COMMUNICATION STYLE:
 - CRITICAL: NEVER output raw JSON blocks or technical data structures in the chat.
 - If you discuss plan changes, describe them in plain text. A separate system handles technical synchronization.
 - Keep responses concise, encouraging, and actionable.
+- Never use em-dash or en-dash characters. Use a comma, a period or a regular hyphen instead.
 `;
 
-// Ordered by preference — newest/fastest first
+// Ordered by preference — stable ids first, previews only as a fallback
 const MODEL_PREFERENCES = [
-  'gemini-2.5-flash-preview-05-20',
   'gemini-2.5-flash',
-  'gemini-2.5-pro-preview-05-06',
+  'gemini-2.5-flash-preview-05-20',
   'gemini-2.5-pro',
   'gemini-2.0-flash',
   'gemini-2.0-flash-lite',
@@ -24,6 +24,9 @@ const MODEL_PREFERENCES = [
   'gemini-1.5-pro',
   'gemini-pro',
 ];
+
+/** Requests that hang forever would leave the UI stuck on a spinner. */
+const REQUEST_TIMEOUT_MS = 90_000;
 
 let _modelCache: { key: string; model: string } | null = null;
 
@@ -65,14 +68,29 @@ async function resolveModel(apiKey: string): Promise<string> {
   return 'gemini-2.0-flash';
 }
 
+/** Turns any transport failure into a message a user can act on. */
+const describeError = (e: any): Error => {
+  if (e?.name === 'AbortError') {
+    return new Error('The request took too long and was cancelled. Please try again.');
+  }
+  const msg = String(e?.message || e || 'Unknown error');
+  if (msg === 'Failed to fetch' || msg.toLowerCase().includes('networkerror')) {
+    return new Error('Cannot reach the Gemini API. Check your connection or disable ad-blockers / extensions that block Google APIs.');
+  }
+  return e instanceof Error ? e : new Error(msg);
+};
+
 const geminiRest = async (
   apiKey: string,
   systemInstruction: string,
   contents: any[],
   responseMimeType: string = "text/plain"
 ): Promise<string> => {
-  const model = await resolveModel(apiKey);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const key = apiKey?.trim();
+  if (!key) throw new Error('No Gemini API key configured. Add one in your Profile.');
+
+  const model = await resolveModel(key);
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
 
   const body: any = {
     systemInstruction: { parts: [{ text: systemInstruction }] },
@@ -87,17 +105,52 @@ const geminiRest = async (
     body.generationConfig.responseMimeType = "application/json";
   }
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data?.error?.message || JSON.stringify(data));
+  let res: Response;
+  let data: any;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    data = await res.json().catch(() => ({}));
+  } catch (e) {
+    throw describeError(e);
+  } finally {
+    clearTimeout(timer);
   }
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+  if (!res.ok) {
+    const apiMsg = data?.error?.message;
+    if (res.status === 400 && /api key/i.test(apiMsg || '')) {
+      throw new Error('The Gemini API key was rejected. Check the key in your Profile.');
+    }
+    if (res.status === 429) {
+      throw new Error('Gemini rate limit reached. Wait a minute and try again.');
+    }
+    throw new Error(apiMsg || `Gemini request failed (HTTP ${res.status}).`);
+  }
+
+  const candidate = data?.candidates?.[0];
+  // Long answers arrive split across several parts — concatenate them all,
+  // otherwise JSON plans come back truncated.
+  const text: string = (candidate?.content?.parts || [])
+    .map((p: any) => p?.text || '')
+    .join('');
+
+  if (!text) {
+    const blocked = data?.promptFeedback?.blockReason || candidate?.finishReason;
+    throw new Error(
+      blocked && blocked !== 'STOP'
+        ? `Gemini returned no content (reason: ${blocked}).`
+        : 'Gemini returned an empty response. Please try again.'
+    );
+  }
+  return text;
 };
 
 /**
@@ -190,6 +243,127 @@ export const repairJson = (str: string): string => {
   return repaired;
 };
 
+/* ============================================================
+   PLAN NORMALIZATION
+   The model is free-form: it may return numbers where the UI expects
+   strings, omit a meal, or return fewer than 7 days. Every screen used
+   to read those fields blindly, so a single odd field crashed the view.
+   Everything below coerces the response into the DayPlan shape.
+============================================================ */
+
+const DAY_NAMES: Record<'en' | 'ru', string[]> = {
+  en: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+  ru: ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'],
+};
+
+const toText = (v: any, fallback = ''): string => {
+  if (v === null || v === undefined) return fallback;
+  if (typeof v === 'string') return v.trim() || fallback;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (Array.isArray(v)) return v.map(x => toText(x)).filter(Boolean).join(', ') || fallback;
+  return fallback;
+};
+
+/**
+ * Free-text fields (recipe, tips, form cues) must reach the markdown renderer
+ * as a string. The model answers with arrays of steps or nested objects often
+ * enough that this coercion is load-bearing, not defensive decoration.
+ */
+const toMarkdown = (v: any): string => {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'string') return v.trim();
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (Array.isArray(v)) return v.map(toMarkdown).filter(Boolean).join('\n');
+  if (typeof v === 'object') {
+    return Object.entries(v)
+      .map(([k, val]) => {
+        const body = toMarkdown(val);
+        return body ? `**${k}**\n${body}` : '';
+      })
+      .filter(Boolean)
+      .join('\n\n');
+  }
+  return '';
+};
+
+const toNumber = (v: any, fallback = 0): number => {
+  if (typeof v === 'number' && Number.isFinite(v)) return Math.round(v);
+  const parsed = parseFloat(String(v ?? '').replace(',', '.'));
+  return Number.isFinite(parsed) ? Math.round(parsed) : fallback;
+};
+
+const normalizeMeal = (raw: any, fallbackName: string): MealDetails => ({
+  name: toText(raw?.name ?? raw?.title, fallbackName),
+  calories: toNumber(raw?.calories),
+  protein: toNumber(raw?.protein),
+  fats: toNumber(raw?.fats ?? raw?.fat),
+  carbs: toNumber(raw?.carbs ?? raw?.carbohydrates),
+  ingredients: Array.isArray(raw?.ingredients)
+    ? raw.ingredients.map((i: any) => toText(i)).filter(Boolean)
+    : undefined,
+  recipe: raw?.recipe ? toMarkdown(raw.recipe) : undefined,
+  tip: raw?.tip ? toMarkdown(raw.tip) : undefined,
+});
+
+const normalizeExercise = (raw: any): ExerciseDetail | null => {
+  const name = toText(raw?.name ?? raw?.exercise ?? raw?.title);
+  if (!name) return null;
+  return {
+    name,
+    sets: toNumber(raw?.sets, 1),
+    // The model happily returns `reps: 12` — the UI calls string methods on it.
+    reps: toText(raw?.reps ?? raw?.repetitions, '-'),
+    rest: toText(raw?.rest ?? raw?.restTime),
+    notes: raw?.notes ? toMarkdown(raw.notes) : undefined,
+  };
+};
+
+/**
+ * Coerces an arbitrary AI response into exactly 7 well-formed DayPlan objects.
+ */
+export const normalizeWeeklyPlan = (raw: any, language: 'en' | 'ru' = 'en'): DayPlan[] => {
+  const list: any[] = Array.isArray(raw)
+    ? raw
+    : (raw?.plan || raw?.days || raw?.weeklyPlan || raw?.week || []);
+
+  const names = DAY_NAMES[language] ?? DAY_NAMES.en;
+
+  return names.map((dayName, idx) => {
+    const src = list[idx] ?? {};
+    const meals = src?.meals ?? {};
+    const exercises = Array.isArray(src?.exercises)
+      ? src.exercises.map(normalizeExercise).filter(Boolean) as ExerciseDetail[]
+      : [];
+
+    return {
+      day: toText(src?.day, dayName),
+      workoutTitle: toText(src?.workoutTitle ?? src?.title, exercises.length ? dayName : ''),
+      exercises,
+      totalCalories: toNumber(src?.totalCalories ?? src?.calories),
+      meals: {
+        breakfast: normalizeMeal(meals?.breakfast, ''),
+        lunch: normalizeMeal(meals?.lunch, ''),
+        dinner: normalizeMeal(meals?.dinner, ''),
+        snack: normalizeMeal(meals?.snack, ''),
+        sportsNutrition: Array.isArray(meals?.sportsNutrition)
+          ? meals.sportsNutrition.map((s: any) => normalizeMeal(s, '')).filter((s: MealDetails) => !!s.name)
+          : [],
+      },
+      workoutTip: toText(src?.workoutTip),
+      nutritionTip: toText(src?.nutritionTip),
+    };
+  });
+};
+
+/** Coerces an on-demand recipe / supplement response into renderable fields. */
+const normalizeDetails = (raw: any): Partial<MealDetails> => ({
+  ingredients: Array.isArray(raw?.ingredients)
+    ? raw.ingredients.map((i: any) => toText(i)).filter(Boolean)
+    : undefined,
+  recipe: raw?.recipe ? toMarkdown(raw.recipe) : undefined,
+  tip: raw?.tip ? toMarkdown(raw.tip) : undefined,
+});
+
 export const validateApiKey = async (apiKey: string): Promise<boolean> => {
   const key = apiKey?.trim();
   if (!key || key.length < 10) return false;
@@ -209,15 +383,15 @@ export const generateCoachResponse = async (
   const key = (apiKey || localStorage.getItem('zenith_gemini_key') || '').trim();
   const profileContext = `User: ${userProfile.name}, Goals: ${userProfile.fitnessGoals.join(", ")}, Level: ${userProfile.fitnessLevel}.`;
   const systemInstruction = `${SYSTEM_INSTRUCTION_BASE}\n${profileContext}\nRespond in ${language === 'ru' ? 'Russian' : 'English'}.`;
-  try {
-    const contents = [
-      ...history.map(msg => ({ role: msg.role === 'user' ? 'user' : 'model', parts: [{ text: msg.text }] })),
-      { role: 'user', parts: [{ text: userMessage }] }
-    ];
-    return await geminiRest(key, systemInstruction, contents);
-  } catch (error: any) {
-    return language === 'ru' ? `Ошибка: ${error.message}` : `Error: ${error.message}`;
-  }
+  const contents = [
+    // Gemini rejects a history that starts with a model turn (our greeting).
+    ...history
+      .filter((msg, i) => !(i === 0 && msg.role === 'model'))
+      .map(msg => ({ role: msg.role === 'user' ? 'user' : 'model', parts: [{ text: msg.text }] })),
+    { role: 'user', parts: [{ text: userMessage }] }
+  ];
+  // Errors bubble up so the caller can render them as an error, not as coach advice.
+  return await geminiRest(key, systemInstruction, contents);
 };
 
 export const generateWeeklyPlan = async (
@@ -298,8 +472,7 @@ export const generateWeeklyPlan = async (
   try {
     const text = await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: prompt }] }], "application/json");
     const parsed = JSON.parse(repairJson(text));
-    const data = Array.isArray(parsed) ? parsed : (parsed.plan || parsed.days || parsed.weeklyPlan || []);
-    return data as DayPlan[];
+    return normalizeWeeklyPlan(parsed, language);
   } catch (e: any) {
     console.error('[generateWeeklyPlan] error:', e);
     throw e;
@@ -328,7 +501,7 @@ export const generateMealDetails = async (
   const prompt = `{ "ingredients": ["..."], "recipe": "Markdown instructions", "tip": "Expert cooking tip" }`;
   try {
     const text = await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: prompt }] }], "application/json");
-    return JSON.parse(repairJson(text));
+    return normalizeDetails(JSON.parse(repairJson(text)));
   } catch (e) {
     console.error('[generateMealDetails] error:', e);
     throw e;
@@ -363,7 +536,7 @@ export const generateSupplementTips = async (
 
   try {
     const text = await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: prompt }] }], "application/json");
-    return JSON.parse(repairJson(text));
+    return normalizeDetails(JSON.parse(repairJson(text)));
   } catch (e) {
     console.error('[generateSupplementTips] error:', e);
     throw e;
@@ -394,9 +567,10 @@ export const generateExerciseDetails = async (
   try {
     const text = await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: prompt }] }], "application/json");
     const parsed = JSON.parse(repairJson(text));
-    // Normalize response keys
+    // Normalize response keys, and coerce: the model sometimes answers with an
+    // array of steps or a nested object where the UI expects markdown text.
     return {
-      notes: parsed.notes || parsed.instructions || parsed.note || parsed.instruction || parsed.text || ""
+      notes: toMarkdown(parsed.notes ?? parsed.instructions ?? parsed.note ?? parsed.instruction ?? parsed.text)
     };
   } catch (e) {
     console.error('[generateExerciseDetails] error:', e);
@@ -413,11 +587,9 @@ export const askPlanQuestion = async (
 ): Promise<string> => {
   const key = (apiKey || localStorage.getItem('zenith_gemini_key') || '').trim();
   const systemInstruction = `You are a ${agentType} AI. Answer based on this plan: ${plan}. Respond in ${language === 'ru' ? 'Russian' : 'English'}.`;
-  try {
-    return await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: question }] }]);
-  } catch (e: any) {
-    return `❌ Error: ${e.message}`;
-  }
+  // Errors bubble up so the view can render them as an error state instead of
+  // presenting "❌ Error: …" as if it were expert advice.
+  return await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: question }] }]);
 };
 
 export const refinePlanWithConsultation = async (
@@ -451,8 +623,7 @@ export const refinePlanWithConsultation = async (
   try {
     const text = await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: prompt }] }], "application/json");
     const parsed = JSON.parse(repairJson(text));
-    const data = Array.isArray(parsed) ? parsed : (parsed.plan || parsed.days || parsed.weeklyPlan || []);
-    return data as DayPlan[];
+    return normalizeWeeklyPlan(parsed, language);
   } catch (e: any) {
     console.error('[refinePlanWithConsultation] error:', e);
     throw e;
