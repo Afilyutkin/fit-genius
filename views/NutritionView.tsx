@@ -1,6 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Utensils, CalendarDays, Coffee, Sun, Moon, Info, ChefHat, Scale, Droplet, Apple, RotateCcw, Wand2, RefreshCw, Zap, Flame, ChevronRight, Send } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import {
+    Utensils, Coffee, Sun, Moon, Info, ChefHat, Scale, Droplet, Apple, RotateCcw,
+    Wand2, RefreshCw, Zap, Flame, ChevronRight, Send, AlertTriangle
+} from 'lucide-react';
+import { motion, useReducedMotion } from 'motion/react';
 import MarkdownContent from '../components/MarkdownContent';
+import DaySelector from '../components/DaySelector';
+import PlanHero from '../components/PlanHero';
+import AnimatedNumber from '../components/AnimatedNumber';
 import { Language, UserProfile, MealDetails, DayPlan } from '../types';
 import { generateWeeklyPlan, askPlanQuestion, generateMealDetails, generateSupplementTips } from '../services/geminiService';
 import { getTranslation } from '../utils/translations';
@@ -12,176 +19,198 @@ interface NutritionViewProps {
     apiKey?: string;
     waterConsumed: number;
     setWaterConsumed: React.Dispatch<React.SetStateAction<number>>;
+    onAwardXp: (amount: number) => void;
 }
 
-
-const AppleMealCard: React.FC<{
+const MealCard: React.FC<{
     meal: MealDetails;
     type: string;
     icon: React.ElementType;
-    color: string;
+    accent: string;
     isRu: boolean;
     t: any;
+    canLoadDetails: boolean;
     isSupplement?: boolean;
     onLoadDetails: () => Promise<void>;
-}> = ({ meal, type, icon: Icon, color, isRu, t, isSupplement = false, onLoadDetails }) => {
+}> = ({ meal, type, icon: Icon, accent, isRu, t, canLoadDetails, isSupplement = false, onLoadDetails }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    const hasDetails = isSupplement ? !!(meal.recipe) : !!(meal.ingredients && meal.recipe);
-    const getLabel = isSupplement
-        ? (isRu ? 'Советы' : 'Get Tips')
-        : t.getRecipe;
+    const hasDetails = isSupplement ? !!meal.recipe : !!(meal.ingredients?.length && meal.recipe);
+    const detailsLabel = isSupplement ? (isRu ? 'Советы' : 'Get tips') : t.getRecipe;
 
     const handleExpand = async () => {
-        if (!isExpanded && !hasDetails) {
+        if (isExpanded) { setIsExpanded(false); return; }
+        setIsExpanded(true);
+        if (!hasDetails && canLoadDetails) {
             setLoading(true);
+            setError(null);
             try {
                 await onLoadDetails();
+            } catch (e: any) {
+                setError(e?.message || (isRu ? 'Не удалось загрузить детали' : 'Could not load details'));
             } finally {
                 setLoading(false);
             }
         }
-        setIsExpanded(!isExpanded);
     };
 
     return (
-        <div className={`group transition-all duration-500 ease-in-out ${isExpanded ? 'bg-white dark:bg-slate-800 shadow-2xl scale-100 ring-1 ring-slate-200 dark:ring-slate-700' : 'bg-slate-50/50 dark:bg-slate-900/40 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl'} rounded-[2.5rem] overflow-hidden border border-transparent`}>
-            {/* Header / Summary */}
-            <div
-                onClick={handleExpand}
-                className="p-6 cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-            >
-                <div className="flex items-center gap-5">
-                    <div className={`w-14 h-14 rounded-2xl ${color} flex items-center justify-center text-white shadow-lg shadow-current/20 group-hover:scale-110 transition-transform duration-300`}>
-                        {loading ? <RefreshCw className="animate-spin" size={24} /> : <Icon size={28} />}
-                    </div>
-                    <div>
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">{type}</span>
-                        <h3 className="text-xl font-black text-slate-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors uppercase tracking-tight">
-                            {meal.name}
-                        </h3>
-                        <div className="flex items-center gap-3 mt-1.5">
-                            <span className="flex items-center gap-1 text-xs font-bold text-slate-500"><Flame size={12} className="text-orange-500" /> {meal.calories} kcal</span>
-                            <span className="w-1 h-1 bg-slate-300 rounded-full" />
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{meal.protein}g P · {meal.carbs}g C · {meal.fats}g F</span>
-                        </div>
-                    </div>
+        <article className="card card-hover overflow-hidden">
+            <div className="p-4 sm:p-5 flex items-center gap-4">
+                <div className={`w-12 h-12 rounded-[var(--radius-control)] ${accent} flex items-center justify-center shrink-0`}>
+                    {loading ? <RefreshCw className="animate-spin" size={20} /> : <Icon size={22} />}
                 </div>
-                <div className="flex items-center gap-3 self-end sm:self-center">
-                    {!hasDetails && !loading && (
-                        <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest transition-all animate-pulse ${isSupplement
-                            ? 'text-blue-500 bg-blue-500/10 group-hover:bg-blue-500 group-hover:text-white'
-                            : 'text-green-500 bg-green-500/10 group-hover:bg-green-500 group-hover:text-white'
-                            }`}>
-                            {getLabel}
+
+                <div className="flex-1 min-w-0">
+                    <span className="eyebrow block">{type}</span>
+                    <h3 className="font-display text-lg font-semibold uppercase tracking-wide text-slate-900 dark:text-white break-words mt-0.5">
+                        {meal.name || (isRu ? 'Без названия' : 'Unnamed')}
+                    </h3>
+                    {/* Macros as separate readouts: a dot-separated string is a metadata smear */}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        <span className="chip bg-flame-500/10 text-flame-700 dark:text-flame-400">
+                            <Flame size={12} />
+                            <span className="stat text-sm">{meal.calories}</span>
+                            <span className="text-[10px] uppercase tracking-wide opacity-80">kcal</span>
                         </span>
-                    )}
-                    <button className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${isExpanded ? 'bg-slate-800 text-white rotate-90' : 'bg-slate-200/50 dark:bg-slate-700/50 text-slate-400'}`}>
-                        <ChevronRight size={20} />
-                    </button>
+                        {[
+                            { key: 'P', value: meal.protein },
+                            { key: 'C', value: meal.carbs },
+                            { key: 'F', value: meal.fats },
+                        ].map(macro => (
+                            <span key={macro.key} className="chip surface-muted text-slate-600 dark:text-slate-300">
+                                <span className="stat text-sm">{macro.value}</span>
+                                <span className="text-[10px] uppercase tracking-wide opacity-70">g {macro.key}</span>
+                            </span>
+                        ))}
+                    </div>
                 </div>
+
+                <button
+                    onClick={handleExpand}
+                    aria-expanded={isExpanded}
+                    aria-label={detailsLabel}
+                    className="btn-secondary shrink-0 px-3.5 py-2 text-sm"
+                >
+                    <ChevronRight size={16} className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                    <span className="hidden sm:inline">{hasDetails ? (isRu ? 'Детали' : 'Details') : detailsLabel}</span>
+                </button>
             </div>
 
-            {/* Expanded Content */}
-            <div className={`transition-all duration-500 overflow-hidden ${isExpanded ? 'max-h-[1500px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                {loading ? (
-                    <div className="px-8 pb-10 flex flex-col items-center justify-center space-y-4">
-                        <div className={`w-10 h-10 border-4 border-slate-100 dark:border-slate-800 rounded-full animate-spin ${isSupplement ? 'border-t-blue-500' : 'border-t-green-500'}`} />
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                            {isSupplement ? (isRu ? 'Эксперт готовит советы...' : 'Expert is writing tips...') : t.chefWriting}
-                        </p>
-                    </div>
-                ) : hasDetails ? (
-                    <div className="px-8 pb-8 pt-2 space-y-8 animate-fade-in">
-                        {/* Compounds (for supplements) or Ingredients (for meals) */}
-                        {meal.ingredients && meal.ingredients.length > 0 && (
-                            <div>
-                                <div className="flex items-center gap-2 mb-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                                    {isSupplement
-                                        ? <><Zap size={14} className="text-blue-500" /> {isRu ? 'Состав и дозировка' : 'Compounds & Dosage'}</>
-                                        : <><Scale size={14} className="text-green-500" /> {isRu ? 'Ингредиенты' : 'Ingredients'}</>
-                                    }
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    {meal.ingredients.map((ing, i) => (
-                                        <span key={i} className={`px-4 py-2 rounded-full text-xs font-bold border cursor-default transition-hover ${isSupplement
-                                            ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700 hover:border-blue-400'
-                                            : 'bg-slate-100 dark:bg-slate-700/50 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-green-400'
-                                            }`}>
-                                            {ing}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Guide Section */}
-                        {meal.recipe && (
-                            <div className={`rounded-[2rem] p-6 border ${isSupplement
-                                ? 'bg-blue-50/50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800'
-                                : 'bg-slate-50 dark:bg-slate-900/50 border-slate-100 dark:border-slate-700'
-                                }`}>
-                                <div className="flex items-center gap-2 mb-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                                    {isSupplement
-                                        ? <><Zap size={14} className="text-blue-500" /> {isRu ? 'Руководство по приёму' : 'Supplement Guide'}</>
-                                        : <><ChefHat size={14} className="text-orange-500" /> {t.preparationGuide}</>
-                                    }
-                                </div>
-                                <div className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
-                                    <MarkdownContent content={meal.recipe} />
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Tip Section */}
-                        {meal.tip && (
-                            <div className="flex gap-4 p-5 bg-blue-50/50 dark:bg-blue-900/10 rounded-[1.5rem] border border-blue-100/50 dark:border-blue-900/20">
-                                <div className="w-10 h-10 rounded-xl bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-blue-500/20">
-                                    <div className="flex items-center justify-center text-white"><Info size={18} /></div>
-                                </div>
+            {isExpanded && (
+                <div className="px-4 sm:px-5 pb-5 space-y-5 animate-fade-in">
+                    {loading ? (
+                        <div className="surface-muted rounded-2xl p-5 space-y-2.5">
+                            <p className="eyebrow mb-3">
+                                {isSupplement ? (isRu ? 'Эксперт готовит советы…' : 'Expert is writing tips…') : t.chefWriting}
+                            </p>
+                            <div className="skeleton h-3 w-full" />
+                            <div className="skeleton h-3 w-10/12" />
+                            <div className="skeleton h-3 w-7/12" />
+                        </div>
+                    ) : error ? (
+                        <div className="flex items-start gap-2.5 rounded-2xl p-4 text-sm
+                                        bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300
+                                        border border-red-200 dark:border-red-900/60">
+                            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                            <span className="break-words">{error}</span>
+                        </div>
+                    ) : hasDetails ? (
+                        <>
+                            {!!meal.ingredients?.length && (
                                 <div>
-                                    <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{t.expertAdvice}</span>
-                                    <p className="text-xs text-blue-800 dark:text-blue-300 font-bold mt-1 leading-relaxed italic">
-                                        "{meal.tip}"
-                                    </p>
+                                    <div className="flex items-center gap-2 mb-3 eyebrow">
+                                        {isSupplement
+                                            ? <><Zap size={14} className="text-brand-700 dark:text-brand-400" />{isRu ? 'Состав и дозировка' : 'Compounds & dosage'}</>
+                                            : <><Scale size={14} className="text-brand-700 dark:text-brand-400" />{isRu ? 'Ингредиенты' : 'Ingredients'}</>}
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {meal.ingredients.map((ing, i) => (
+                                            <span
+                                                key={i}
+                                                className={`chip ${isSupplement
+                                                    ? 'bg-brand-300/15 text-brand-800 dark:text-brand-300 border-brand-500/30'
+                                                    : 'surface-muted text-slate-700 dark:text-slate-300'}`}
+                                            >
+                                                {ing}
+                                            </span>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
-                        )}
-                    </div>
-                ) : null}
-            </div>
-        </div>
+                            )}
+
+                            {meal.recipe && (
+                                <div className="surface-muted rounded-2xl p-5">
+                                    <div className="flex items-center gap-2 mb-3 eyebrow">
+                                        {isSupplement
+                                            ? <><Zap size={14} className="text-brand-700 dark:text-brand-400" />{isRu ? 'Руководство по приёму' : 'Supplement guide'}</>
+                                            : <><ChefHat size={14} className="text-flame-500" />{t.preparationGuide}</>}
+                                    </div>
+                                    <div className="text-slate-700 dark:text-slate-300">
+                                        <MarkdownContent content={meal.recipe} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {meal.tip && (
+                                <div className="flex gap-3 p-4 rounded-[var(--radius-card)] bg-brand-300/12 border border-brand-500/25">
+                                    <div className="w-9 h-9 rounded-[var(--radius-control)] bg-brand-300 flex items-center justify-center text-slate-950 shrink-0">
+                                        <Info size={17} />
+                                    </div>
+                                    <div>
+                                        <span className="eyebrow text-brand-800 dark:text-brand-300">{t.expertAdvice}</span>
+                                        <p className="text-sm text-slate-700 dark:text-slate-200 mt-1 leading-relaxed">{meal.tip}</p>
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <p className="text-sm text-slate-500 dark:text-slate-400 px-1">
+                            {isRu
+                                ? 'Добавьте ключ Gemini в профиле, чтобы получить рецепт.'
+                                : 'Add your Gemini key in Profile to get the recipe.'}
+                        </p>
+                    )}
+                </div>
+            )}
+        </article>
     );
 };
 
-const NutritionView: React.FC<NutritionViewProps> = ({ language, userProfile, setUserProfile, apiKey = '', waterConsumed, setWaterConsumed }) => {
+const NutritionView: React.FC<NutritionViewProps> = ({
+    language, userProfile, setUserProfile, apiKey = '', waterConsumed, setWaterConsumed, onAwardXp
+}) => {
     const trans = getTranslation(language);
     const t = trans.nutrition;
     const common = trans.common;
+
     const [selectedDayIndex, setSelectedDayIndex] = useState(0);
     const [loading, setLoading] = useState(false);
     const [generateError, setGenerateError] = useState<string | null>(null);
     const [question, setQuestion] = useState('');
     const [answer, setAnswer] = useState<string | null>(null);
+    const [answerError, setAnswerError] = useState<string | null>(null);
     const [askLoading, setAskLoading] = useState(false);
     const autoGenRef = useRef(false);
 
     const isRu = language === 'ru';
     const weeklyPlan = Array.isArray(userProfile?.weeklyPlan) ? userProfile.weeklyPlan : [];
     const hasWeeklyPlan = weeklyPlan.length > 0;
-    const currentDayPlan = (hasWeeklyPlan && weeklyPlan[selectedDayIndex]) ? weeklyPlan[selectedDayIndex] : null;
+    const safeDayIndex = Math.min(selectedDayIndex, Math.max(0, weeklyPlan.length - 1));
+    const currentDayPlan = hasWeeklyPlan ? weeklyPlan[safeDayIndex] : null;
+    const noApiKey = !apiKey;
 
     const waterGoal = userProfile?.weight ? Math.round(userProfile.weight * 35) : 2500;
-    const waterPercentage = Math.min((waterConsumed / waterGoal) * 100, 100);
+    const waterPercentage = waterGoal > 0 ? Math.min((waterConsumed / waterGoal) * 100, 100) : 0;
 
-    useEffect(() => {
-        const canGenerate = apiKey && userProfile?.name && !hasWeeklyPlan && !loading && !autoGenRef.current;
-        if (canGenerate) {
-            autoGenRef.current = true;
-            handleGenerate();
-        }
-    }, [apiKey, userProfile?.name, hasWeeklyPlan]);
+    const dayLabels = useMemo(() => {
+        const short = isRu
+            ? ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС']
+            : ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+        return weeklyPlan.map((day, i) => short[i] ?? (day?.day?.slice(0, 3).toUpperCase() || `${i + 1}`));
+    }, [weeklyPlan, isRu]);
 
     const handleGenerate = async () => {
         if (!apiKey || !userProfile) return;
@@ -192,6 +221,7 @@ const NutritionView: React.FC<NutritionViewProps> = ({ language, userProfile, se
         try {
             const plan = await generateWeeklyPlan(userProfile, apiKey, language);
             setUserProfile(prev => ({ ...prev, weeklyPlan: plan, planLanguage: language, isSetup: true }));
+            setSelectedDayIndex(0);
         } catch (e: any) {
             setGenerateError(e?.message || (isRu ? 'Ошибка генерации плана' : 'Failed to generate plan'));
         } finally {
@@ -199,177 +229,206 @@ const NutritionView: React.FC<NutritionViewProps> = ({ language, userProfile, se
         }
     };
 
+    useEffect(() => {
+        if (apiKey && userProfile?.name && !hasWeeklyPlan && !loading && !autoGenRef.current) {
+            handleGenerate();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [apiKey, userProfile?.name, hasWeeklyPlan]);
+
     const handleLoadMealDetails = async (mealKey: Exclude<keyof DayPlan['meals'], 'sportsNutrition'>) => {
         if (!apiKey || !userProfile || !currentDayPlan) return;
-        try {
-            const meal = currentDayPlan.meals[mealKey];
-            const details = await generateMealDetails(meal.name, userProfile, apiKey, language);
-            setUserProfile(prev => {
-                if (!prev.weeklyPlan) return prev;
-                const newPlan = [...prev.weeklyPlan];
-                const day = { ...newPlan[selectedDayIndex] };
-                const meals = { ...day.meals };
-                meals[mealKey] = { ...meals[mealKey], ...details };
-                day.meals = meals;
-                newPlan[selectedDayIndex] = day;
-                return { ...prev, weeklyPlan: newPlan };
-            });
-        } catch (e) {
-            console.error('Failed to load meal details:', e);
-        }
+        const meal = currentDayPlan.meals?.[mealKey];
+        if (!meal) return;
+
+        const details = await generateMealDetails(meal.name, userProfile, apiKey, language);
+        setUserProfile(prev => {
+            if (!prev.weeklyPlan?.[safeDayIndex]) return prev;
+            const newPlan = [...prev.weeklyPlan];
+            const day = { ...newPlan[safeDayIndex] };
+            day.meals = { ...day.meals, [mealKey]: { ...day.meals[mealKey], ...details } };
+            newPlan[safeDayIndex] = day;
+            return { ...prev, weeklyPlan: newPlan };
+        });
     };
 
     const handleLoadSupplementDetails = async (index: number) => {
         if (!apiKey || !userProfile || !currentDayPlan) return;
-        try {
-            const supplement = currentDayPlan.meals.sportsNutrition[index];
-            const details = await generateSupplementTips(supplement.name, userProfile, apiKey, language);
-            setUserProfile(prev => {
-                if (!prev.weeklyPlan) return prev;
-                const newPlan = [...prev.weeklyPlan];
-                const day = { ...newPlan[selectedDayIndex] };
-                const sportsNutrition = [...day.meals.sportsNutrition];
-                sportsNutrition[index] = { ...sportsNutrition[index], ...details };
-                day.meals = { ...day.meals, sportsNutrition };
-                newPlan[selectedDayIndex] = day;
-                return { ...prev, weeklyPlan: newPlan };
-            });
-        } catch (e) {
-            console.error('Failed to load supplement details:', e);
-        }
+        const supplement = currentDayPlan.meals?.sportsNutrition?.[index];
+        if (!supplement) return;
+
+        const details = await generateSupplementTips(supplement.name, userProfile, apiKey, language);
+        setUserProfile(prev => {
+            if (!prev.weeklyPlan?.[safeDayIndex]) return prev;
+            const newPlan = [...prev.weeklyPlan];
+            const day = { ...newPlan[safeDayIndex] };
+            const sportsNutrition = [...(day.meals.sportsNutrition || [])];
+            sportsNutrition[index] = { ...sportsNutrition[index], ...details };
+            day.meals = { ...day.meals, sportsNutrition };
+            newPlan[safeDayIndex] = day;
+            return { ...prev, weeklyPlan: newPlan };
+        });
     };
 
     const handleAskQuestion = async () => {
-        if (!question.trim() || !currentDayPlan || !apiKey) return;
+        const q = question.trim();
+        if (!q || !currentDayPlan || !apiKey || askLoading) return;
         setAskLoading(true);
-        const planStr = JSON.stringify(currentDayPlan);
-        const response = await askPlanQuestion(planStr, question, 'dietary', apiKey, language);
-        setAnswer(response);
-        setQuestion('');
-        setAskLoading(false);
+        setAnswerError(null);
+        try {
+            const response = await askPlanQuestion(JSON.stringify(currentDayPlan), q, 'dietary', apiKey, language);
+            setAnswer(response);
+            setQuestion('');
+        } catch (e: any) {
+            setAnswerError(e?.message || (isRu ? 'Не удалось получить ответ' : 'Could not get an answer'));
+        } finally {
+            setAskLoading(false);
+        }
     };
 
-    const days = isRu ? ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'] : ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-    const noApiKey = !apiKey;
+    // Hydration rewards XP here too — the Dashboard tracker always did.
+    const handleAddWater = (ml: number) => {
+        setWaterConsumed(prev => prev + ml);
+        onAwardXp(Math.floor(ml / 50));
+    };
+
+    const meals = currentDayPlan?.meals;
+    const supplements = meals?.sportsNutrition ?? [];
 
     return (
-        <div className="max-w-6xl mx-auto pb-12 space-y-10 animate-fade-in font-sans">
-            {/* Language Mismatch Banner */}
+        <div className="space-y-8 animate-fade-in">
+            {/* Language mismatch banner */}
             {hasWeeklyPlan && userProfile?.planLanguage && userProfile.planLanguage !== language && (
-                <div className="p-4 bg-orange-500/10 border border-orange-500/20 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 animate-fade-in group">
+                <div className="card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4
+                                border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center text-white shrink-0 group-hover:rotate-12 transition-transform">
-                            <Wand2 size={20} />
+                        <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center text-white shrink-0">
+                            <Wand2 size={18} />
                         </div>
-                        <p className="text-sm font-bold text-orange-700 dark:text-orange-400">
-                            {getTranslation(language).common.translatePrompt}
-                        </p>
+                        <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">{common.translatePrompt}</p>
                     </div>
-                    <button
-                        onClick={handleGenerate}
-                        disabled={loading}
-                        className="px-6 py-2 bg-orange-500 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all active:scale-95 shadow-lg shadow-orange-500/20 flex items-center gap-2 whitespace-nowrap"
-                    >
-                        {loading ? <RefreshCw className="animate-spin" size={14} /> : <Wand2 size={14} />}
-                        {getTranslation(language).common.refresh}
+                    <button onClick={handleGenerate} disabled={loading} className="btn bg-amber-500 text-white hover:bg-amber-600 shrink-0">
+                        {loading ? <RefreshCw size={15} className="animate-spin" /> : <Wand2 size={15} />}
+                        {common.refresh}
                     </button>
                 </div>
             )}
 
-            <div className="relative overflow-hidden bg-slate-900 rounded-[3rem] p-10 sm:p-14 text-white shadow-3xl">
-                <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-green-500/20 to-transparent z-0 blur-3xl" />
-                <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-10">
-                    <div className="max-w-xl text-center md:text-left">
-                        <p className="text-green-400 text-xs font-black uppercase tracking-[0.3em] mb-4">{t.aiNutritionist}</p>
-                        <h1 className="text-5xl md:text-6xl font-black subpixel-antialiased tracking-tight leading-tight">{t.pageTitle}</h1>
-                        <p className="text-slate-400 text-lg mt-6 font-medium leading-relaxed">{t.pageSubtitle}</p>
+            <PlanHero
+                eyebrow={t.aiNutritionist}
+                title={t.pageTitle}
+                subtitle={t.pageSubtitle}
+                stats={[{
+                    icon: Utensils,
+                    value: currentDayPlan ? <AnimatedNumber value={currentDayPlan.totalCalories} /> : '0',
+                    label: t.targetKcal,
+                }]}
+                actionLabel={common.refreshPlan}
+                loadingLabel={common.curating}
+                loading={loading}
+                disabled={noApiKey}
+                onAction={handleGenerate}
+            >
+                {noApiKey && !hasWeeklyPlan && !loading && (
+                    <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5 flex items-start gap-3">
+                        <Info size={20} className="text-red-400 shrink-0 mt-0.5" />
+                        <p className="text-sm text-slate-200 leading-relaxed">
+                            {isRu
+                                ? 'Добавьте ключ Gemini в профиле, чтобы составить план питания.'
+                                : 'Add your Gemini API key in Profile to build a meal plan.'}
+                        </p>
                     </div>
-                    <div className="flex flex-col items-center md:items-end gap-6">
-                        <div className="bg-white/10 backdrop-blur-md rounded-[2rem] p-6 border border-white/10 flex items-center gap-6 min-w-[200px]">
-                            <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center shadow-lg shadow-green-500/50"><Utensils size={24} className="text-white" /></div>
-                            <div>
-                                <div className="text-3xl font-black tracking-tighter">{currentDayPlan?.totalCalories || 2200}</div>
-                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">{t.targetKcal}</div>
-                            </div>
-                        </div>
-                        <button onClick={() => { autoGenRef.current = false; handleGenerate(); }} disabled={loading || noApiKey || !userProfile} className={`group relative overflow-hidden px-8 py-4 rounded-full font-black text-sm uppercase tracking-widest transition-all duration-500 active:scale-95 ${loading ? 'bg-slate-800' : 'bg-white text-slate-900 border-2 border-transparent hover:px-12'}`}>
-                            <span className="relative z-10 flex items-center gap-3">
-                                {loading ? <RefreshCw size={18} className="animate-spin" /> : <Wand2 size={18} />}
-                                {loading ? common.curating : common.refreshPlan}
-                            </span>
-                        </button>
-                    </div>
-                </div>
+                )}
+
                 {generateError && !loading && (
-                    <div className="mt-10 bg-red-500/10 border border-red-500/30 backdrop-blur-sm rounded-3xl p-8 flex flex-col sm:flex-row items-center gap-6">
-                        <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center shrink-0"><Info size={32} className="text-white" /></div>
-                        <div className="flex-1 text-center sm:text-left">
-                            <h3 className="text-xl font-black text-red-400 mb-1">{common.genError}</h3>
-                            <p className="text-red-400/80 font-bold text-sm">{generateError}</p>
-                            <button onClick={() => { setGenerateError(null); autoGenRef.current = false; handleGenerate(); }} className="mt-4 px-6 py-2 bg-red-500 hover:bg-red-400 text-white rounded-full font-black text-xs uppercase tracking-widest transition-all">{common.retry}</button>
+                    <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5 flex items-start gap-4">
+                        <AlertTriangle size={22} className="text-red-400 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                            <h3 className="font-bold text-red-300 mb-1">{common.genError}</h3>
+                            <p className="text-sm text-slate-300 break-words">{generateError}</p>
+                            <button
+                                onClick={() => { setGenerateError(null); handleGenerate(); }}
+                                className="btn bg-red-500 text-white hover:bg-red-600 mt-4"
+                            >
+                                {common.retry}
+                            </button>
                         </div>
                     </div>
                 )}
-            </div>
+            </PlanHero>
 
-            {hasWeeklyPlan && (
-                <div className="flex justify-center">
-                    <div className="inline-flex p-2 bg-slate-100 dark:bg-slate-900 rounded-[2rem] shadow-inner border border-slate-200 dark:border-slate-800">
-                        {days.map((day, idx) => (
-                            <button key={idx} onClick={() => setSelectedDayIndex(idx)} className={`px-6 py-4 rounded-[1.5rem] text-sm font-black transition-all duration-300 ${selectedDayIndex === idx ? 'bg-white dark:bg-slate-800 text-green-600 dark:text-green-400 shadow-xl scale-110 z-10' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'}`}>{day}</button>
-                        ))}
-                    </div>
-                </div>
+            {hasWeeklyPlan && !loading && (
+                <DaySelector
+                    days={dayLabels}
+                    selected={safeDayIndex}
+                    onSelect={setSelectedDayIndex}
+                    label={isRu ? 'День недели' : 'Day of the week'}
+                />
             )}
 
             {loading ? (
-                <div className="py-32 flex flex-col items-center justify-center space-y-8">
-                    <div className="relative"><div className="w-24 h-24 rounded-full border-[6px] border-slate-100 dark:border-slate-800 border-t-green-500 animate-spin transition-all duration-700" /><Zap size={32} className="absolute inset-0 m-auto text-green-500 animate-pulse" /></div>
-                    <div className="text-center space-y-2"><h3 className="text-2xl font-black text-slate-800 dark:text-white">{t.analyzing}</h3><p className="text-slate-500 font-medium">{t.chefReady}</p></div>
+                <div className="py-20 flex flex-col items-center justify-center gap-6">
+                    <div className="relative">
+                        <div className="w-20 h-20 rounded-full border-[5px] border-slate-200 dark:border-slate-800 border-t-brand-400 animate-spin" />
+                        <Utensils size={24} className="absolute inset-0 m-auto text-brand-500" />
+                    </div>
+                    <div className="text-center">
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-white">{t.analyzing}</h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t.chefReady}</p>
+                    </div>
                 </div>
-            ) : currentDayPlan ? (
-                <div className="space-y-10 animate-fade-in" key={selectedDayIndex}>
-                    {/* Day Header */}
-                    <div className="px-6 py-4 text-center">
-                        <h2 className="text-4xl font-black text-slate-800 dark:text-white tracking-tight">{`${t.menuFor} ${currentDayPlan.day}`}</h2>
-                        <p className="text-slate-500 font-bold mt-2 uppercase tracking-[0.2em] text-xs">{t.balancedByAi}</p>
-                    </div>
-
-                    {/* ── Regular Meals ── */}
-                    <div>
-                        <div className="flex items-center gap-3 mb-5 px-1">
-                            <div className="w-8 h-8 rounded-xl bg-orange-500 flex items-center justify-center shadow-md shadow-orange-200 dark:shadow-none">
-                                <Utensils size={16} className="text-white" />
+            ) : currentDayPlan && meals ? (
+                <div className="space-y-8 animate-fade-in" key={safeDayIndex}>
+                    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                        <div>
+                            <p className="eyebrow">{t.balancedByAi}</p>
+                            <h2 className="font-display text-2xl sm:text-4xl font-semibold uppercase leading-none
+                                           text-slate-900 dark:text-white mt-2">
+                                {`${t.menuFor} ${currentDayPlan.day}`}
+                            </h2>
+                        </div>
+                        <div className="sm:text-right shrink-0">
+                            <div className="stat text-3xl text-slate-900 dark:text-white">
+                                <AnimatedNumber value={currentDayPlan.totalCalories} />
                             </div>
-                            <span className="text-sm font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                                {isRu ? 'Основное питание' : 'Daily Meals'}
-                            </span>
-                            <div className="flex-1 h-px bg-slate-100 dark:bg-slate-800" />
-                            <span className="text-xs font-bold text-slate-400">{currentDayPlan.totalCalories} kcal</span>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                            <AppleMealCard meal={currentDayPlan.meals.breakfast} type={t.breakfast} icon={Coffee} color="bg-orange-500" isRu={isRu} t={t} onLoadDetails={() => handleLoadMealDetails('breakfast')} />
-                            <AppleMealCard meal={currentDayPlan.meals.lunch} type={t.lunch} icon={Sun} color="bg-yellow-500" isRu={isRu} t={t} onLoadDetails={() => handleLoadMealDetails('lunch')} />
-                            <AppleMealCard meal={currentDayPlan.meals.snack} type={t.snack} icon={Apple} color="bg-pink-500" isRu={isRu} t={t} onLoadDetails={() => handleLoadMealDetails('snack')} />
-                            <AppleMealCard meal={currentDayPlan.meals.dinner} type={t.dinner} icon={Moon} color="bg-indigo-600" isRu={isRu} t={t} onLoadDetails={() => handleLoadMealDetails('dinner')} />
+                            <p className="eyebrow mt-1">kcal</p>
                         </div>
                     </div>
 
-                    {/* ── Sports Nutrition ── */}
-                    {userProfile?.useSupplements && Array.isArray(currentDayPlan.meals.sportsNutrition) && currentDayPlan.meals.sportsNutrition.length > 0 && (
-                        <div className="rounded-[2.5rem] bg-gradient-to-br from-blue-50 to-slate-50 dark:from-blue-950/30 dark:to-slate-900/50 border border-blue-100 dark:border-blue-900/40 p-6 space-y-5">
-                            {/* Section header */}
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center shadow-md shadow-blue-200 dark:shadow-none">
-                                    <Zap size={16} className="text-white" />
+                    {/* Daily meals */}
+                    <section>
+                        <header className="flex items-center gap-3 mb-4">
+                            <div className="w-8 h-8 rounded-[var(--radius-control)] bg-slate-950 dark:bg-slate-800 flex items-center justify-center">
+                                <Utensils size={15} className="text-brand-300" />
+                            </div>
+                            <h3 className="font-display text-base font-semibold uppercase tracking-wide text-slate-900 dark:text-white">
+                                {isRu ? 'Основное питание' : 'Daily meals'}
+                            </h3>
+                            <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+                        </header>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <MealCard meal={meals.breakfast} type={t.breakfast} icon={Coffee} accent="bg-brand-300 text-slate-950" isRu={isRu} t={t} canLoadDetails={!noApiKey} onLoadDetails={() => handleLoadMealDetails('breakfast')} />
+                            <MealCard meal={meals.lunch} type={t.lunch} icon={Sun} accent="bg-slate-950 text-brand-300 dark:bg-slate-800" isRu={isRu} t={t} canLoadDetails={!noApiKey} onLoadDetails={() => handleLoadMealDetails('lunch')} />
+                            <MealCard meal={meals.snack} type={t.snack} icon={Apple} accent="bg-brand-300 text-slate-950" isRu={isRu} t={t} canLoadDetails={!noApiKey} onLoadDetails={() => handleLoadMealDetails('snack')} />
+                            <MealCard meal={meals.dinner} type={t.dinner} icon={Moon} accent="bg-slate-950 text-brand-300 dark:bg-slate-800" isRu={isRu} t={t} canLoadDetails={!noApiKey} onLoadDetails={() => handleLoadMealDetails('dinner')} />
+                        </div>
+                    </section>
+
+                    {/* Sports nutrition */}
+                    {userProfile?.useSupplements && supplements.length > 0 && (
+                        <section className="panel p-5 sm:p-6 bg-brand-300/8 border-brand-500/25">
+                            <header className="flex items-center gap-3 mb-5">
+                                <div className="w-8 h-8 rounded-[var(--radius-control)] bg-brand-300 flex items-center justify-center">
+                                    <Zap size={15} className="text-slate-950" />
                                 </div>
-                                <span className="text-sm font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">
-                                    {isRu ? 'Спортивное питание' : 'Sports Nutrition'}
-                                </span>
-                                <div className="flex-1 h-px bg-blue-100 dark:bg-blue-900/40" />
-                                <span className="text-[10px] font-black uppercase tracking-widest bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-300 px-3 py-1 rounded-full border border-blue-200 dark:border-blue-800">
+                                <h3 className="font-display text-base font-semibold uppercase tracking-wide text-slate-900 dark:text-white">
+                                    {isRu ? 'Спортивное питание' : 'Sports nutrition'}
+                                </h3>
+                                <div className="flex-1 h-px bg-brand-500/25" />
+                                <span className="chip bg-brand-300/30 text-brand-900 dark:text-brand-300 border-brand-500/40 py-1">
                                     {(() => {
-                                        const n = currentDayPlan.meals.sportsNutrition.length;
+                                        const n = supplements.length;
                                         if (isRu) {
                                             const word = n === 1 ? 'приём' : n >= 2 && n <= 4 ? 'приёма' : 'приёмов';
                                             return `${n} ${word}`;
@@ -377,109 +436,165 @@ const NutritionView: React.FC<NutritionViewProps> = ({ language, userProfile, se
                                         return `${n} ${n === 1 ? 'intake' : 'intakes'}`;
                                     })()}
                                 </span>
-                            </div>
+                            </header>
 
-                            {/* Timeline-style cards */}
-                            <div className="relative pl-5">
-                                {/* Vertical line */}
-                                <div className="absolute left-[0.6rem] top-2 bottom-2 w-px bg-blue-200 dark:bg-blue-800/60" />
+                            {/* Timeline */}
+                            <div className="relative pl-6">
+                                <div className="absolute left-[0.3rem] top-3 bottom-3 w-px bg-brand-500/30" aria-hidden="true" />
                                 <div className="space-y-3">
-                                    {currentDayPlan.meals.sportsNutrition.map((item, idx) => (
+                                    {supplements.map((item, idx) => (
                                         <div key={`supp-${idx}`} className="relative">
-                                            {/* Dot on timeline */}
-                                            <div className="absolute -left-5 top-7 w-2.5 h-2.5 rounded-full bg-blue-500 border-2 border-white dark:border-slate-900 shadow" />
-                                            <AppleMealCard
+                                            <span className="absolute -left-6 top-7 w-2.5 h-2.5 rounded-full bg-brand-400 border-2 border-white dark:border-slate-900" aria-hidden="true" />
+                                            <MealCard
                                                 meal={item}
                                                 type={t.sportsNutrition}
                                                 icon={Zap}
-                                                color="bg-blue-500"
+                                                accent="bg-brand-300 text-slate-950"
                                                 isRu={isRu}
                                                 t={t}
-                                                isSupplement={true}
+                                                isSupplement
+                                                canLoadDetails={!noApiKey}
                                                 onLoadDetails={() => handleLoadSupplementDetails(idx)}
                                             />
                                         </div>
                                     ))}
                                 </div>
                             </div>
-                        </div>
+                        </section>
                     )}
 
-                    {/* Day Tip */}
                     {currentDayPlan.nutritionTip && (
-                        <div className="p-8 bg-slate-50 dark:bg-white/5 backdrop-blur-md rounded-[2.5rem] border border-slate-200 dark:border-white/10 animate-fade-in mb-10">
-                            <div className="flex items-center gap-2 mb-4">
-                                <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-[10px] text-white dark:text-slate-900 font-black">AI</div>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 leading-none">{t.nutritionInsight}</span>
+                        <div className="card p-6">
+                            <div className="flex items-center gap-2 mb-3">
+                                <span className="w-6 h-6 rounded-full bg-brand-300 text-slate-950 text-[10px] font-bold flex items-center justify-center">AI</span>
+                                <span className="eyebrow">{t.nutritionInsight}</span>
                             </div>
-                            <div className="text-sm font-medium leading-relaxed text-slate-700 dark:text-slate-200 max-w-none">
+                            <div className="text-slate-700 dark:text-slate-300">
                                 <MarkdownContent content={currentDayPlan.nutritionTip} />
                             </div>
                         </div>
                     )}
                 </div>
             ) : (
-                <div className="py-20 text-center bg-white dark:bg-slate-800 rounded-[3rem] border border-dashed border-slate-200 dark:border-slate-700">
-                    <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-400">
-                        <Utensils size={32} />
+                <div className="card p-10 sm:p-14 text-center border-dashed">
+                    <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto mb-5">
+                        <Utensils size={28} />
                     </div>
-                    <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-2">
-                        {t.noData}
-                    </h3>
-                    <p className="text-slate-500 font-medium max-w-sm mx-auto mb-8">
-                        {t.noDataDesc}
-                    </p>
-                    <button
-                        onClick={() => { autoGenRef.current = false; handleGenerate(); }}
-                        className="px-8 py-4 bg-green-500 hover:bg-green-600 text-white rounded-full font-black text-sm uppercase tracking-widest transition-all"
-                    >
+                    <h3 className="font-display text-2xl font-semibold uppercase text-slate-900 dark:text-white mb-2">{t.noData}</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto mb-7">{t.noDataDesc}</p>
+                    <button onClick={handleGenerate} disabled={noApiKey || loading} className="btn-primary">
+                        <Wand2 size={16} />
                         {common.refreshPlan}
                     </button>
                 </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mt-10">
-                <div className="bg-white dark:bg-slate-900 rounded-[3rem] p-10 text-slate-800 dark:text-white border border-slate-100 dark:border-none shadow-2xl relative overflow-hidden group">
-                    <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-green-500/5 dark:bg-green-500/10 rounded-full blur-3xl group-hover:bg-green-500/20 transition-colors duration-500" />
-                    <div className="relative z-10 space-y-8">
-                        <div><h2 className="text-3xl font-black mb-2 leading-tight">{t.talkToExpert}</h2><p className="text-slate-500 dark:text-slate-400 font-medium">{t.talkToExpertDesc}</p></div>
-                        <div className="space-y-4">
-                            <div className="relative">
-                                <input type="text" value={question} onChange={e => setQuestion(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAskQuestion()} placeholder={t.inputPlaceholder} className="w-full pl-6 pr-16 py-5 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-full text-slate-800 dark:text-white font-medium focus:outline-none focus:ring-4 focus:ring-green-500/30 transition-all focus:bg-slate-100 dark:focus:bg-white/10" />
-                                <button onClick={handleAskQuestion} disabled={askLoading || !question.trim()} className="absolute right-2 top-2 bottom-2 px-6 bg-green-500 hover:bg-green-400 text-white dark:text-slate-900 rounded-full font-black transition-all disabled:opacity-30 flex items-center justify-center shadow-lg shadow-green-500/20 active:scale-90">{askLoading ? <RefreshCw size={20} className="animate-spin" /> : <Send size={20} />}</button>
-                            </div>
-                            {answer && (
-                                <div className="p-8 bg-slate-50 dark:bg-white/5 backdrop-blur-md rounded-[2.5rem] border border-slate-200 dark:border-white/10 animate-fade-in">
-                                    <div className="flex items-center gap-2 mb-4"><div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-[10px] text-white dark:text-slate-900 font-black">AI</div><span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 leading-none">{t.expertAdvice}</span></div>
-                                    <div className="text-sm font-medium leading-relaxed text-slate-700 dark:text-slate-200 max-w-none"><MarkdownContent content={answer} /></div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
+            {/* Q&A + hydration */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <section className="panel p-6 sm:p-8">
+                    <h2 className="font-display text-2xl sm:text-3xl font-semibold uppercase text-slate-900 dark:text-white mb-1.5">{t.talkToExpert}</h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">{t.talkToExpertDesc}</p>
 
-                <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-10 shadow-2xl border border-slate-100 dark:border-slate-700 flex flex-col items-center justify-between text-center overflow-hidden relative">
-                    <div className="absolute top-0 left-0 w-full h-2 bg-blue-500 transition-all duration-1000" style={{ opacity: waterGoal > 0 ? waterConsumed / waterGoal : 0 }} />
-                    <div className="space-y-2">
-                        <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/30 rounded-3xl flex items-center justify-center text-blue-500 mx-auto mb-4"><Droplet size={32} /></div>
-                        <h2 className="text-3xl font-black text-slate-800 dark:text-white uppercase tracking-tighter">{t.hydration}</h2>
-                        <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">{t.dailyGoal}: {waterGoal}ml</p>
+                    <div className="relative">
+                        <label htmlFor="nutrition-question" className="sr-only">{t.talkToExpert}</label>
+                        <input
+                            id="nutrition-question"
+                            type="text"
+                            value={question}
+                            onChange={e => setQuestion(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') handleAskQuestion(); }}
+                            placeholder={t.inputPlaceholder}
+                            disabled={!currentDayPlan || noApiKey}
+                            className="input pr-14 py-3.5 rounded-full disabled:opacity-60"
+                        />
+                        <button
+                            onClick={handleAskQuestion}
+                            disabled={askLoading || !question.trim() || !currentDayPlan || noApiKey}
+                            aria-label={isRu ? 'Отправить вопрос' : 'Send question'}
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full
+                                       bg-brand-300 text-slate-950 hover:bg-brand-200 disabled:opacity-40
+                                       flex items-center justify-center transition-colors"
+                        >
+                            {askLoading ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
+                        </button>
                     </div>
-                    <div className="relative py-6 flex items-center justify-center">
-                        <svg className="w-40 h-40 transform -rotate-90" viewBox="0 0 100 100">
-                            <circle cx="50" cy="50" r="45" fill="none" stroke="#f1f5f9" strokeWidth="8" className="dark:stroke-slate-700/50" />
-                            <circle cx="50" cy="50" r="45" fill="none" stroke="url(#water-grad)" strokeWidth="8" strokeDasharray="283" strokeDashoffset={isNaN(waterPercentage) ? 283 : 283 - (283 * waterPercentage / 100)} strokeLinecap="round" className="transition-all duration-1000 ease-out" />
-                            <defs><linearGradient id="water-grad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#3b82f6" /><stop offset="100%" stopColor="#60a5fa" /></linearGradient></defs>
+
+                    {answerError && (
+                        <div className="mt-5 flex items-start gap-2.5 rounded-2xl p-4 text-sm
+                                        bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300
+                                        border border-red-200 dark:border-red-900/60">
+                            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                            <span className="break-words">{answerError}</span>
+                        </div>
+                    )}
+
+                    {answer && (
+                        <div className="mt-5 surface-muted rounded-2xl p-6 animate-fade-in">
+                            <div className="flex items-center gap-2 mb-3">
+                                <span className="w-6 h-6 rounded-full bg-brand-300 text-slate-950 text-[10px] font-bold flex items-center justify-center">AI</span>
+                                <span className="eyebrow">{t.expertAdvice}</span>
+                            </div>
+                            <div className="text-slate-700 dark:text-slate-300">
+                                <MarkdownContent content={answer} />
+                            </div>
+                        </div>
+                    )}
+                </section>
+
+                <section className="panel p-6 sm:p-8 flex flex-col items-center text-center">
+                    <div className="w-14 h-14 rounded-[var(--radius-control)] bg-aqua-500/15 text-aqua-500 flex items-center justify-center mb-4">
+                        <Droplet size={28} />
+                    </div>
+                    <h2 className="font-display text-2xl font-semibold uppercase text-slate-900 dark:text-white">{t.hydration}</h2>
+                    <p className="eyebrow mt-1.5">{t.dailyGoal}: {waterGoal} ml</p>
+
+                    <div className="relative py-7 flex items-center justify-center">
+                        <svg className="w-40 h-40 -rotate-90" viewBox="0 0 100 100" role="img"
+                            aria-label={`${Math.round(waterPercentage)}%`}>
+                            <circle cx="50" cy="50" r="45" fill="none" strokeWidth="8"
+                                className="stroke-slate-200 dark:stroke-slate-800" />
+                            <circle
+                                cx="50" cy="50" r="45" fill="none" stroke="url(#water-grad)" strokeWidth="8"
+                                strokeDasharray="283"
+                                strokeDashoffset={283 - (283 * waterPercentage / 100)}
+                                strokeLinecap="round"
+                                className="transition-all duration-700 ease-out"
+                            />
+                            <defs>
+                                <linearGradient id="water-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stopColor="#12c2e0" />
+                                    <stop offset="100%" stopColor="#38dcf4" />
+                                </linearGradient>
+                            </defs>
                         </svg>
-                        <div className="absolute flex flex-col items-center justify-center"><span className="text-4xl font-black text-slate-800 dark:text-white tracking-tighter">{waterConsumed}</span><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ML</span></div>
-                    </div>
-                    <div className="w-full space-y-4">
-                        <div className="flex gap-2 justify-center">
-                            {[250, 500].map(ml => (<button key={ml} onClick={() => setWaterConsumed(prev => prev + ml)} className="px-6 py-4 rounded-2xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-black text-sm hover:scale-105 active:scale-95 transition-all">+{ml}ml</button>))}
-                            <button onClick={() => setWaterConsumed(0)} className="w-14 h-14 flex items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-400 hover:text-red-500 transition-colors"><RotateCcw size={20} /></button>
+                        <div className="absolute flex flex-col items-center">
+                            <span className="stat text-4xl text-slate-900 dark:text-white">
+                                <AnimatedNumber value={waterConsumed} />
+                            </span>
+                            <span className="eyebrow mt-1">ML</span>
                         </div>
                     </div>
-                </div>
+
+                    <div className="flex flex-wrap gap-2 justify-center">
+                        {[250, 500].map(ml => (
+                            <button
+                                key={ml}
+                                onClick={() => handleAddWater(ml)}
+                                className="btn-secondary px-5"
+                            >
+                                <Droplet size={14} className="text-aqua-500" />
+                                +{ml} ml
+                            </button>
+                        ))}
+                        <button
+                            onClick={() => setWaterConsumed(0)}
+                            aria-label={isRu ? 'Сбросить счётчик воды' : 'Reset water counter'}
+                            className="btn-secondary px-3"
+                        >
+                            <RotateCcw size={17} />
+                        </button>
+                    </div>
+                </section>
             </div>
         </div>
     );
