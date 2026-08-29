@@ -121,10 +121,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, language, se
             <span className="flex items-center gap-3">
               {theme === 'light'
                 ? <Moon size={20} className="text-slate-400 shrink-0" />
-                : <Sun size={20} className="text-amber-400 shrink-0" />}
+                : <Sun size={20} className="text-brand-500 dark:text-brand-300 shrink-0" />}
               {isRu ? 'Тема' : 'Theme'}
             </span>
-            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+            <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
               {theme === 'light' ? (isRu ? 'Светлая' : 'Light') : (isRu ? 'Тёмная' : 'Dark')}
             </span>
           </button>
@@ -185,7 +185,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, language, se
           >
             {theme === 'light'
               ? <Moon size={18} className="text-slate-500" />
-              : <Sun size={18} className="text-amber-400" />}
+              : <Sun size={18} className="text-brand-600 dark:text-brand-300" />}
           </button>
         </div>
       </header>
