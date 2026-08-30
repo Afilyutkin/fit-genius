@@ -1,7 +1,7 @@
 import React from 'react';
 import { RefreshCw, Wand2 } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
-import { Stage, Reveal, StageStat } from './Stage';
+import { Stage, Reveal, StageStat, StageVariant } from './Stage';
 
 interface PlanHeroProps {
   eyebrow: string;
@@ -14,6 +14,8 @@ interface PlanHeroProps {
   loading: boolean;
   disabled?: boolean;
   onAction: () => void;
+  /** Picks the backdrop: training runs hot and fast, nutrition cool and slow. */
+  variant?: StageVariant;
   children?: React.ReactNode;
 }
 
@@ -23,12 +25,12 @@ interface PlanHeroProps {
  * condensed display type, oversized numerals and a volt action.
  */
 const PlanHero: React.FC<PlanHeroProps> = ({
-  eyebrow, title, subtitle, stats, actionLabel, loadingLabel, loading, disabled, onAction, children,
+  eyebrow, title, subtitle, stats, actionLabel, loadingLabel, loading, disabled, onAction, variant = 'dashboard', children,
 }) => {
   const reduce = useReducedMotion();
 
   return (
-    <Stage>
+    <Stage variant={variant}>
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
         <Reveal delay={100} className="max-w-xl">
           <p className="eyebrow text-brand-300">{eyebrow}</p>

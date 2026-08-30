@@ -118,7 +118,7 @@ const HeroStage: React.FC<HeroStageProps> = ({
   const progressPercent = Math.round((xpIntoLevel / xpPerLevel) * 100);
 
   return (
-    <Stage videoSrc={videoSrc}>
+    <Stage variant="dashboard" videoSrc={videoSrc}>
         {/* ── Top bar ───────────────────────────────────────────── */}
         <div className="flex items-start justify-between gap-4 relative">
           <Reveal delay={100} from="down">
