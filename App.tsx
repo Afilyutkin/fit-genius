@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Tab, UserProfile, DailyStats, Language, Theme } from './types';
 import { normalizeWeeklyPlan } from './services/geminiService';
+import { clearPlanHistory } from './utils/planHistory';
 import { normalizeSports } from './utils/profile';
 import Sidebar from './components/Sidebar';
 import AICoach from './components/AICoach';
@@ -248,12 +249,13 @@ const App: React.FC = () => {
   const handleSignOut = useCallback(() => {
     const confirmed = window.confirm(
       language === 'ru'
-        ? 'Выйти и удалить профиль, план и историю веса с этого устройства?'
-        : 'Sign out and erase your profile, plan and weight history from this device?'
+        ? 'Выйти и удалить профиль, план, историю веса и историю недель с этого устройства?'
+        : 'Sign out and erase your profile, plan, weight history and week history from this device?'
     );
     if (!confirmed) return;
 
     Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
+    clearPlanHistory();
     setUserProfile(INITIAL_PROFILE);
     setApiKeyState('');
     setWaterConsumed(0);

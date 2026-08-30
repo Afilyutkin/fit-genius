@@ -54,6 +54,34 @@ export interface SportPreference {
   durationMin: number;
 }
 
+/** An event the athlete is training for; drives periodisation of the plan. */
+export interface CompetitionTarget {
+  enabled: boolean;
+  /** Which discipline the athlete competes in. */
+  sport: string;
+  /** Event date, ISO yyyy-mm-dd. */
+  date: string;
+  /** What counts as success, e.g. "полумарафон за 1:45". */
+  goal: string;
+}
+
+/** A finished week, kept so the next plan can build on it. */
+export interface WeekRecord {
+  /** When the plan was generated. */
+  startedAt: string;
+  /** When it was replaced by a new plan. */
+  archivedAt: string;
+  completionPercent: number;
+  totalExercises: number;
+  completedExercises: number;
+  weightKg: number;
+  mealsPerDay: number;
+  /** Human-readable sports schedule at the time, e.g. "Бег 3x45 мин". */
+  sports: string;
+  trainedExercises: string[];
+  skippedExercises: string[];
+}
+
 export interface UserProfile {
   name: string;
   level: number;
@@ -68,10 +96,14 @@ export interface UserProfile {
   sports: SportPreference[];
   /** How many times a day the user eats (excluding supplements). */
   mealsPerDay: number;
+  /** Optional: set when the athlete is preparing for an event. */
+  competition?: CompetitionTarget;
   dietaryPreferences: string;
   activityLevel: 'Sedentary' | 'Moderate' | 'Active' | 'Extra Active';
   isSetup: boolean;
   weeklyPlan: DayPlan[] | null;
+  /** ISO timestamp of the current plan, used to date archived weeks. */
+  planCreatedAt?: string;
   planLanguage?: Language;
   completedExercises: string[];
   useSupplements: boolean;
