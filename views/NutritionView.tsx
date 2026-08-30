@@ -9,8 +9,9 @@ import DaySelector from '../components/DaySelector';
 import PlanHero from '../components/PlanHero';
 import AnimatedNumber from '../components/AnimatedNumber';
 import { Language, UserProfile, MealDetails, DayPlan } from '../types';
-import { generateWeeklyPlan, askPlanQuestion, generateMealDetails, generateSupplementTips } from '../services/geminiService';
+import { generateWeeklyPlan, askPlanQuestion, generateMealDetails, generateSupplementTips, describeGeminiError } from '../services/geminiService';
 import { getTranslation } from '../utils/translations';
+import { dayLabel, shortDayLabel } from '../utils/days';
 
 interface NutritionViewProps {
     language: Language;
@@ -21,6 +22,13 @@ interface NutritionViewProps {
     setWaterConsumed: React.Dispatch<React.SetStateAction<number>>;
     onAwardXp: (amount: number) => void;
 }
+
+/** Icon by position in the day: the slot names are free-form model output. */
+const mealIcon = (index: number, total: number): React.ElementType => {
+  if (index === 0) return Coffee;
+  if (index === total - 1) return Moon;
+  return index % 2 === 1 ? Sun : Apple;
+};
 
 const MealCard: React.FC<{
     meal: MealDetails;
@@ -49,7 +57,7 @@ const MealCard: React.FC<{
             try {
                 await onLoadDetails();
             } catch (e: any) {
-                setError(e?.message || (isRu ? 'Не удалось загрузить детали' : 'Could not load details'));
+                setError(describeGeminiError(e, isRu ? 'ru' : 'en'));
             } finally {
                 setLoading(false);
             }
@@ -208,12 +216,9 @@ const NutritionView: React.FC<NutritionViewProps> = ({
     const waterGoal = userProfile?.weight ? Math.round(userProfile.weight * 35) : 2500;
     const waterPercentage = waterGoal > 0 ? Math.min((waterConsumed / waterGoal) * 100, 100) : 0;
 
-    const dayLabels = useMemo(() => {
-        const short = isRu
-            ? ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС']
-            : ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-        return weeklyPlan.map((day, i) => short[i] ?? (day?.day?.slice(0, 3).toUpperCase() || `${i + 1}`));
-    }, [weeklyPlan, isRu]);
+    const dayLabels = useMemo(
+        () => weeklyPlan.map((_, i) => shortDayLabel(i, language)),
+        [weeklyPlan, language]);
 
     const handleGenerate = async () => {
         if (!apiKey || !userProfile) return;
@@ -226,7 +231,7 @@ const NutritionView: React.FC<NutritionViewProps> = ({
             setUserProfile(prev => ({ ...prev, weeklyPlan: plan, planLanguage: language, isSetup: true }));
             setSelectedDayIndex(0);
         } catch (e: any) {
-            setGenerateError(e?.message || (isRu ? 'Ошибка генерации плана' : 'Failed to generate plan'));
+            setGenerateError(describeGeminiError(e, language));
         } finally {
             setLoading(false);
         }
@@ -239,9 +244,9 @@ const NutritionView: React.FC<NutritionViewProps> = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [apiKey, userProfile?.name, hasWeeklyPlan]);
 
-    const handleLoadMealDetails = async (mealKey: Exclude<keyof DayPlan['meals'], 'sportsNutrition'>) => {
+    const handleLoadMealDetails = async (index: number) => {
         if (!apiKey || !userProfile || !currentDayPlan) return;
-        const meal = currentDayPlan.meals?.[mealKey];
+        const meal = currentDayPlan.meals?.items?.[index];
         if (!meal) return;
 
         const details = await generateMealDetails(meal.name, userProfile, apiKey, language);
@@ -249,7 +254,9 @@ const NutritionView: React.FC<NutritionViewProps> = ({
             if (!prev.weeklyPlan?.[safeDayIndex]) return prev;
             const newPlan = [...prev.weeklyPlan];
             const day = { ...newPlan[safeDayIndex] };
-            day.meals = { ...day.meals, [mealKey]: { ...day.meals[mealKey], ...details } };
+            const items = [...(day.meals.items || [])];
+            items[index] = { ...items[index], ...details };
+            day.meals = { ...day.meals, items };
             newPlan[safeDayIndex] = day;
             return { ...prev, weeklyPlan: newPlan };
         });
@@ -283,7 +290,7 @@ const NutritionView: React.FC<NutritionViewProps> = ({
             setAnswer(response);
             setQuestion('');
         } catch (e: any) {
-            setAnswerError(e?.message || (isRu ? 'Не удалось получить ответ' : 'Could not get an answer'));
+            setAnswerError(describeGeminiError(e, language));
         } finally {
             setAskLoading(false);
         }
@@ -296,6 +303,7 @@ const NutritionView: React.FC<NutritionViewProps> = ({
     };
 
     const meals = currentDayPlan?.meals;
+    const mealItems = meals?.items ?? [];
     const supplements = meals?.sportsNutrition ?? [];
 
     return (
@@ -387,7 +395,7 @@ const NutritionView: React.FC<NutritionViewProps> = ({
                             <p className="eyebrow">{t.balancedByAi}</p>
                             <h2 className="font-display text-2xl sm:text-4xl font-semibold uppercase leading-none
                                            text-slate-900 dark:text-white mt-2">
-                                {`${t.menuFor} ${currentDayPlan.day}`}
+                                {`${t.menuFor} ${dayLabel(safeDayIndex, language)}`}
                             </h2>
                         </div>
                         <div className="sm:text-right shrink-0">
@@ -411,10 +419,21 @@ const NutritionView: React.FC<NutritionViewProps> = ({
                         </header>
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            <MealCard meal={meals.breakfast} type={t.breakfast} icon={Coffee} accent="bg-brand-300 text-slate-950" isRu={isRu} t={t} canLoadDetails={!noApiKey} onLoadDetails={() => handleLoadMealDetails('breakfast')} />
-                            <MealCard meal={meals.lunch} type={t.lunch} icon={Sun} accent="bg-slate-950 text-brand-300 dark:bg-slate-800" isRu={isRu} t={t} canLoadDetails={!noApiKey} onLoadDetails={() => handleLoadMealDetails('lunch')} />
-                            <MealCard meal={meals.snack} type={t.snack} icon={Apple} accent="bg-brand-300 text-slate-950" isRu={isRu} t={t} canLoadDetails={!noApiKey} onLoadDetails={() => handleLoadMealDetails('snack')} />
-                            <MealCard meal={meals.dinner} type={t.dinner} icon={Moon} accent="bg-slate-950 text-brand-300 dark:bg-slate-800" isRu={isRu} t={t} canLoadDetails={!noApiKey} onLoadDetails={() => handleLoadMealDetails('dinner')} />
+                            {mealItems.map((meal, i) => (
+                                <MealCard
+                                    key={`${meal.slot}-${i}`}
+                                    meal={meal}
+                                    type={meal.slot}
+                                    icon={mealIcon(i, mealItems.length)}
+                                    accent={i % 2 === 0
+                                        ? 'bg-brand-300 text-slate-950'
+                                        : 'bg-slate-950 text-brand-300 dark:bg-slate-800'}
+                                    isRu={isRu}
+                                    t={t}
+                                    canLoadDetails={!noApiKey}
+                                    onLoadDetails={() => handleLoadMealDetails(i)}
+                                />
+                            ))}
                         </div>
                     </section>
 

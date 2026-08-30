@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UserProfile, Language } from '../types';
+import { UserProfile, Language, SportPreference } from '../types';
 import {
     Save, AlertTriangle, Activity, Calendar, Clock, Utensils, Key, CheckCircle, XCircle,
     Loader2, Wand2, Target, Check, TrendingUp, RefreshCw, Trash2, Eye, EyeOff,
-    User as UserIcon, ExternalLink
+    User as UserIcon, ExternalLink, Plus
 } from 'lucide-react';
-import { validateApiKey, generateWeeklyPlan } from '../services/geminiService';
+import { validateApiKey, generateWeeklyPlan, describeGeminiError, describeKeyCheck } from '../services/geminiService';
 import { getTranslation } from '../utils/translations';
+import { Stage, Reveal, StageStat } from '../components/Stage';
+import { DEFAULT_SPORT, SPORT_LIMITS, totalWorkoutsPerWeek, totalMinutesPerWeek } from '../utils/profile';
 
 /** How many fitness goals the plan generator accepts at once. */
 const MAX_GOALS = 5;
@@ -32,8 +34,9 @@ const NumberField: React.FC<{
     min: number;
     max: number;
     step?: number;
+    compact?: boolean;
     onCommit: (value: number) => void;
-}> = ({ id, label, value, min, max, step = 1, onCommit }) => {
+}> = ({ id, label, value, min, max, step = 1, compact = false, onCommit }) => {
     const [draft, setDraft] = useState(String(value));
     const focused = useRef(false);
 
@@ -51,7 +54,12 @@ const NumberField: React.FC<{
 
     return (
         <div>
-            <label htmlFor={id} className="label flex items-center gap-1.5">{label}</label>
+            <label
+                htmlFor={id}
+                className={`label flex items-center gap-1 ${compact ? 'text-[10px] whitespace-nowrap' : 'gap-1.5'}`}
+            >
+                {label}
+            </label>
             <input
                 id={id}
                 type="number"
@@ -78,9 +86,10 @@ const ProfileView: React.FC<ProfileViewProps> = ({
 }) => {
     const [tempKey, setTempKey] = useState(apiKey);
     const [keyStatus, setKeyStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
+    // Why the check failed, so the field can say more than "invalid key".
+    const [keyProblem, setKeyProblem] = useState<{ message: string; detail?: string } | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [generateError, setGenerateError] = useState<string | null>(null);
-    const [sportsInput, setSportsInput] = useState(userProfile.preferredSports.join(', '));
     const [showKey, setShowKey] = useState(false);
     const checkedRef = useRef(false);
 
@@ -92,9 +101,10 @@ const ProfileView: React.FC<ProfileViewProps> = ({
         const key = (keyToCheck || tempKey).trim();
         if (!key) return;
         setKeyStatus('checking');
-        const isValid = await validateApiKey(key);
-        setKeyStatus(isValid ? 'valid' : 'invalid');
-        if (isValid) {
+        const result = await validateApiKey(key);
+        setKeyStatus(result.ok ? 'valid' : 'invalid');
+        setKeyProblem(result.ok ? null : { message: describeKeyCheck(result, language), detail: result.detail });
+        if (result.ok) {
             setApiKey(key);
             if (!keyToCheck) setTempKey(key);
         }
@@ -117,12 +127,22 @@ const ProfileView: React.FC<ProfileViewProps> = ({
         setApiKey('');
         setTempKey('');
         setKeyStatus('idle');
+        setKeyProblem(null);
     };
 
-    const handleSportChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = e.target.value;
-        setSportsInput(val);
-        handleChange('preferredSports', val.split(/[\s,]+/).filter(s => s.trim().length > 0));
+    const updateSport = (index: number, patch: Partial<SportPreference>) => {
+        setUserProfile(prev => ({
+            ...prev,
+            sports: prev.sports.map((sport, i) => (i === index ? { ...sport, ...patch } : sport)),
+        }));
+    };
+
+    const addSport = () => {
+        setUserProfile(prev => ({ ...prev, sports: [...prev.sports, { ...DEFAULT_SPORT }] }));
+    };
+
+    const removeSport = (index: number) => {
+        setUserProfile(prev => ({ ...prev, sports: prev.sports.filter((_, i) => i !== index) }));
     };
 
     const toggleGoal = (goalKey: string) => {
@@ -162,7 +182,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
             setWaterConsumed(0);
             onPlanGenerated();
         } catch (e: any) {
-            setGenerateError(e?.message || (isRu ? 'Ошибка генерации плана' : 'Failed to generate plan'));
+            setGenerateError(describeGeminiError(e, language));
         } finally {
             setIsGenerating(false);
         }
@@ -180,27 +200,55 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     ];
 
     const goalsFull = userProfile.fitnessGoals.length >= MAX_GOALS;
+    const weeklyTotal = totalWorkoutsPerWeek(userProfile);
+    const weeklyHours = Math.round(totalMinutesPerWeek(userProfile) / 6) / 10;
 
     return (
         <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
-                <div>
-                    <h1 className="font-display text-3xl sm:text-4xl font-semibold uppercase text-slate-900 dark:text-white">
-                        {userProfile.isSetup ? t.title : (isRu ? 'Добро пожаловать в Fit Genius' : 'Welcome to Fit Genius')}
-                    </h1>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5">{t.subtitle}</p>
+            {/* Header: the same lit stage the other tabs open with */}
+            <Stage>
+                <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
+                    <Reveal delay={100} className="max-w-xl">
+                        <p className="eyebrow text-brand-300">Fit Genius</p>
+                        <h1 className="mt-3 font-display text-3xl sm:text-4xl lg:text-[3.25rem] font-semibold
+                                       uppercase leading-[0.95] tracking-tight">
+                            {userProfile.isSetup ? t.title : (isRu ? 'Добро пожаловать в Fit Genius' : 'Welcome to Fit Genius')}
+                        </h1>
+                        <p className="text-slate-400 text-sm sm:text-base mt-4 leading-relaxed max-w-[52ch]">
+                            {t.subtitle}
+                        </p>
+                    </Reveal>
+
+                    <Reveal delay={300} from="left" className="shrink-0">
+                        <div className="flex flex-col sm:flex-row lg:flex-col items-stretch gap-4 lg:items-end">
+                            <div className="flex items-stretch gap-5 rounded-[var(--radius-card)] border border-white/10
+                                            bg-white/[0.07] backdrop-blur-xl px-5 py-4">
+                                <StageStat
+                                    icon={Calendar}
+                                    value={weeklyTotal}
+                                    label={isRu ? 'трен. в неделю' : 'sessions a week'}
+                                />
+                                <div className="w-px bg-white/10" aria-hidden="true" />
+                                <StageStat
+                                    icon={Utensils}
+                                    value={userProfile.mealsPerDay}
+                                    label={isRu ? 'приёмов пищи' : 'meals a day'}
+                                />
+                            </div>
+
+                            <button
+                                onClick={handleSaveAndGenerate}
+                                disabled={isGenerating}
+                                className="btn-primary px-6 py-3 justify-center"
+                            >
+                                {isGenerating ? <Loader2 size={17} className="animate-spin" />
+                                    : userProfile.isSetup ? <Save size={17} /> : <Wand2 size={17} />}
+                                {isGenerating ? t.generating : (userProfile.isSetup ? t.save : t.generatePlan)}
+                            </button>
+                        </div>
+                    </Reveal>
                 </div>
-                <button
-                    onClick={handleSaveAndGenerate}
-                    disabled={isGenerating}
-                    className="btn-primary w-full sm:w-auto px-6 py-3"
-                >
-                    {isGenerating ? <Loader2 size={17} className="animate-spin" />
-                        : userProfile.isSetup ? <Save size={17} /> : <Wand2 size={17} />}
-                    {isGenerating ? t.generating : (userProfile.isSetup ? t.save : t.generatePlan)}
-                </button>
-            </div>
+            </Stage>
 
             {generateError && (
                 <div role="alert" className="flex items-start gap-3 rounded-2xl p-4
@@ -253,7 +301,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                             value={tempKey}
                             autoComplete="off"
                             spellCheck={false}
-                            onChange={(e) => { setTempKey(e.target.value); setKeyStatus('idle'); }}
+                            onChange={(e) => { setTempKey(e.target.value); setKeyStatus('idle'); setKeyProblem(null); }}
                             onKeyDown={(e) => { if (e.key === 'Enter') handleCheckKey(); }}
                             placeholder={t.apiKeyPlaceholder}
                             className={`input font-mono pr-20 py-3 ${keyStatus === 'valid'
@@ -292,10 +340,24 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                     </div>
                 </div>
 
-                {keyStatus === 'invalid' && (
-                    <p className="mt-3 text-xs font-semibold text-red-500 flex items-center gap-1.5">
-                        <AlertTriangle size={14} /> {t.invalidKey}
-                    </p>
+                {keyStatus === 'invalid' && keyProblem && (
+                    <div className="mt-3 rounded-[var(--radius-control)] border border-red-200 dark:border-red-900/60
+                                    bg-red-50 dark:bg-red-950/40 p-3">
+                        <p className="text-xs font-semibold text-red-700 dark:text-red-300 flex items-start gap-1.5">
+                            <AlertTriangle size={14} className="shrink-0 mt-px" />
+                            <span>{keyProblem.message}</span>
+                        </p>
+                        {keyProblem.detail && (
+                            <details className="mt-2">
+                                <summary className="text-[11px] text-red-700/70 dark:text-red-300/70 cursor-pointer">
+                                    {isRu ? 'Ответ Google' : 'Google response'}
+                                </summary>
+                                <p className="mt-1 text-[11px] font-mono text-slate-600 dark:text-slate-400 break-words">
+                                    {keyProblem.detail}
+                                </p>
+                            </details>
+                        )}
+                    </div>
                 )}
             </section>
 
@@ -420,33 +482,75 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                             </select>
                         </div>
 
+                        {/* Each sport carries its own rhythm: a runner who also
+                            swims twice a week is not one global number. */}
                         <div>
-                            <label htmlFor="preferred-sports" className="label">{t.preferredSports}</label>
-                            <input
-                                id="preferred-sports"
-                                type="text"
-                                value={sportsInput}
-                                onChange={handleSportChange}
-                                placeholder={isRu ? 'бег, плавание, йога' : 'running, swimming, yoga'}
-                                className="input"
-                            />
-                        </div>
+                            <div className="flex items-center justify-between gap-3 mb-2">
+                                <label className="label mb-0">{t.preferredSports}</label>
+                                <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                                    {t.weeklyTotal}: {weeklyTotal} {t.sessionsShort} · {weeklyHours} {isRu ? 'ч' : 'h'}
+                                </span>
+                            </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <NumberField
-                                id="workouts-per-week"
-                                label={<><Calendar size={13} /> {t.freq}</>}
-                                value={userProfile.workoutsPerWeek}
-                                min={1} max={14}
-                                onCommit={(v) => handleChange('workoutsPerWeek', Math.round(v))}
-                            />
-                            <NumberField
-                                id="workout-duration"
-                                label={<><Clock size={13} /> {t.duration}</>}
-                                value={userProfile.workoutDurationMin}
-                                min={10} max={240} step={5}
-                                onCommit={(v) => handleChange('workoutDurationMin', Math.round(v))}
-                            />
+                            <div className="space-y-2">
+                                {userProfile.sports.map((sport, index) => (
+                                    <div key={index} className="surface-muted rounded-[var(--radius-control)] p-2.5 space-y-2">
+                                        {/* Name on its own line: side by side there was no room for
+                                            full labels, and both of them wrapped to two lines. */}
+                                        <div className="flex items-center gap-2">
+                                            <label htmlFor={`sport-name-${index}`} className="sr-only">{t.sportName}</label>
+                                            <input
+                                                id={`sport-name-${index}`}
+                                                type="text"
+                                                value={sport.name}
+                                                onChange={(e) => updateSport(index, { name: e.target.value })}
+                                                placeholder={isRu ? 'бег' : 'running'}
+                                                className="input flex-1 min-w-0"
+                                            />
+                                            <button
+                                                onClick={() => removeSport(index)}
+                                                className="btn-danger p-2.5 shrink-0"
+                                                title={t.removeSport}
+                                                aria-label={`${t.removeSport}: ${sport.name || index + 1}`}
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <NumberField
+                                                id={`sport-freq-${index}`}
+                                                compact
+                                                label={<><Calendar size={11} /> {t.perWeek}</>}
+                                                value={sport.timesPerWeek}
+                                                min={SPORT_LIMITS.timesPerWeek.min}
+                                                max={SPORT_LIMITS.timesPerWeek.max}
+                                                onCommit={(v) => updateSport(index, { timesPerWeek: Math.round(v) })}
+                                            />
+                                            <NumberField
+                                                id={`sport-dur-${index}`}
+                                                compact
+                                                step={5}
+                                                label={<><Clock size={11} /> {t.minutes}</>}
+                                                value={sport.durationMin}
+                                                min={SPORT_LIMITS.durationMin.min}
+                                                max={SPORT_LIMITS.durationMin.max}
+                                                onCommit={(v) => updateSport(index, { durationMin: Math.round(v) })}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {!userProfile.sports.length && (
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 py-2">
+                                    {t.noSports}
+                                </p>
+                            )}
+
+                            <button onClick={addSport} className="btn-secondary w-full mt-2">
+                                <Plus size={16} /> {t.addSport}
+                            </button>
                         </div>
                     </div>
                 </section>
@@ -480,6 +584,33 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                         <Utensils size={18} className="text-orange-500" />
                         {t.nutritionGoals}
                     </h2>
+
+                    {/* Meal rhythm: drives how many meals the generated plan has. */}
+                    <div className="mb-5">
+                        <label className="label flex items-center gap-1.5">
+                            <Utensils size={12} /> {t.mealsPerDay}
+                        </label>
+                        <div className="flex flex-wrap gap-2" role="group" aria-label={t.mealsPerDay}>
+                            {[2, 3, 4, 5, 6].map(count => {
+                                const isSelected = userProfile.mealsPerDay === count;
+                                return (
+                                    <button
+                                        key={count}
+                                        onClick={() => handleChange('mealsPerDay', count)}
+                                        aria-pressed={isSelected}
+                                        className={`chip min-w-11 justify-center ${isSelected
+                                            ? 'bg-brand-300 text-slate-950 border-brand-300'
+                                            : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-brand-400'}`}
+                                    >
+                                        {count}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">
+                            {t.mealsPerDayHint}
+                        </p>
+                    </div>
 
                     <label htmlFor="dietary-prefs" className="label">{t.dietaryPrefs}</label>
                     <select

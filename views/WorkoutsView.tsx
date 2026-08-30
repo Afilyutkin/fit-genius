@@ -9,8 +9,9 @@ import DaySelector from '../components/DaySelector';
 import PlanHero from '../components/PlanHero';
 import AnimatedNumber from '../components/AnimatedNumber';
 import { UserProfile, Language, ExerciseDetail } from '../types';
-import { generateWeeklyPlan, askPlanQuestion, generateExerciseDetails } from '../services/geminiService';
+import { generateWeeklyPlan, askPlanQuestion, generateExerciseDetails, describeGeminiError } from '../services/geminiService';
 import { getTranslation } from '../utils/translations';
+import { dayLabel, shortDayLabel } from '../utils/days';
 
 interface WorkoutsViewProps {
     userProfile: UserProfile;
@@ -50,7 +51,7 @@ const ExerciseCard: React.FC<{
             try {
                 await onLoadTips();
             } catch (e: any) {
-                setError(e?.message || (isRu ? 'Не удалось загрузить советы' : 'Could not load tips'));
+                setError(describeGeminiError(e, isRu ? 'ru' : 'en'));
             } finally {
                 setLoading(false);
             }
@@ -184,10 +185,7 @@ const WorkoutsView: React.FC<WorkoutsViewProps> = ({ userProfile, setUserProfile
     const currentDayPlan = hasWeeklyPlan ? weeklyPlan[safeDayIndex] : null;
 
     const dayLabels = useMemo(() => {
-        const short = isRu
-            ? ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС']
-            : ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-        return weeklyPlan.map((day, i) => short[i] ?? (day?.day?.slice(0, 3).toUpperCase() || `${i + 1}`));
+        return weeklyPlan.map((_, i) => shortDayLabel(i, language));
     }, [weeklyPlan, isRu]);
 
     const completedCount = userProfile.completedExercises?.length || 0;
@@ -215,7 +213,7 @@ const WorkoutsView: React.FC<WorkoutsViewProps> = ({ userProfile, setUserProfile
             setUserProfile(prev => ({ ...prev, weeklyPlan: plan, planLanguage: language, isSetup: true }));
             setSelectedDayIndex(0);
         } catch (e: any) {
-            setGenerateError(e?.message || (isRu ? 'Ошибка генерации плана' : 'Failed to generate plan'));
+            setGenerateError(describeGeminiError(e, language));
             // autoGenRef stays set — prevents an infinite auto-retry loop on failure.
         } finally {
             setLoading(false);
@@ -260,7 +258,7 @@ const WorkoutsView: React.FC<WorkoutsViewProps> = ({ userProfile, setUserProfile
             setAnswer(response);
             setQuestion('');
         } catch (e: any) {
-            setAnswerError(e?.message || (isRu ? 'Не удалось получить ответ' : 'Could not get an answer'));
+            setAnswerError(describeGeminiError(e, language));
         } finally {
             setAskLoading(false);
         }
@@ -362,10 +360,10 @@ const WorkoutsView: React.FC<WorkoutsViewProps> = ({ userProfile, setUserProfile
                 <div className="space-y-6 animate-fade-in" key={safeDayIndex}>
                     <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
                         <div>
-                            <p className="eyebrow">{currentDayPlan.day}</p>
+                            <p className="eyebrow">{dayLabel(safeDayIndex, language)}</p>
                             <h2 className="font-display text-2xl sm:text-4xl font-semibold uppercase leading-none
                                            text-slate-900 dark:text-white mt-2">
-                                {currentDayPlan.workoutTitle || `${t.workout}: ${currentDayPlan.day}`}
+                                {currentDayPlan.workoutTitle || `${t.workout}: ${dayLabel(safeDayIndex, language)}`}
                             </h2>
                         </div>
                         {/* Session progress: the reason to come back tomorrow */}

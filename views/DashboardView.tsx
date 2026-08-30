@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, Tooltip, XAxis, YAxis } from 'recharts';
-import { DailyStats, UserProfile, Language, Achievement } from '../types';
+import { DailyStats, UserProfile, Language, Achievement, Tab } from '../types';
 import {
-  Flame, Footprints, Clock, Activity, Watch, RefreshCw, Zap, Star,
+  Flame, Footprints, Clock, Activity, Watch, RefreshCw, Zap,
   Trophy, Target, Scale, Droplet, Check, Users, Crown, Medal, ArrowDown, ArrowUp, Minus, AlertTriangle
 } from 'lucide-react';
 import { getTranslation } from '../utils/translations';
 import { motion, useReducedMotion } from 'motion/react';
 import AnimatedNumber from '../components/AnimatedNumber';
+import HeroStage from '../components/HeroStage';
 
 interface DashboardProps {
   stats: DailyStats;
@@ -18,6 +19,7 @@ interface DashboardProps {
   waterConsumed: number;
   setWaterConsumed: React.Dispatch<React.SetStateAction<number>>;
   onAwardXp: (amount: number) => void;
+  onNavigate: (tab: Tab) => void;
 }
 
 const XP_PER_LEVEL = 500;
@@ -33,7 +35,7 @@ const initials = (name: string) =>
   name.trim().split(/\s+/).slice(0, 2).map(part => part[0] ?? '').join('').toUpperCase() || '?';
 
 const DashboardView: React.FC<DashboardProps> = ({
-  stats, userProfile, setUserProfile, language, weightHistory, waterConsumed, setWaterConsumed, onAwardXp
+  stats, userProfile, setUserProfile, language, weightHistory, waterConsumed, setWaterConsumed, onAwardXp, onNavigate
 }) => {
   const t = getTranslation(language).dashboard;
   const AT = getTranslation(language).achievements;
@@ -168,6 +170,15 @@ const DashboardView: React.FC<DashboardProps> = ({
   const activeQuests = achievements.filter(a => !a.unlocked).slice(0, 3);
   const questsToShow = activeQuests.length ? activeQuests : achievements.slice(0, 2);
 
+  // Today's slice of the generated plan feeds the stage's tip card.
+  const todayPlan = userProfile.weeklyPlan?.length
+    ? userProfile.weeklyPlan[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1]
+      ?? userProfile.weeklyPlan[0]
+    : null;
+  const coachTip = todayPlan?.workoutTip || todayPlan?.nutritionTip || (isRu
+    ? 'Создайте план в профиле, и тренер добавит сюда совет на каждый день.'
+    : 'Generate a plan in your profile and the coach will put a daily tip here.');
+
   const currentLevel = userProfile.level;
   const currentXP = userProfile.xp;
   const xpIntoLevel = currentXP % XP_PER_LEVEL;
@@ -200,70 +211,20 @@ const DashboardView: React.FC<DashboardProps> = ({
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <div className="flex flex-col lg:flex-row justify-between gap-5">
-        <div className="flex-1 min-w-0">
-          <p className="eyebrow capitalize">{today}</p>
-          <h1 className="font-display text-3xl sm:text-4xl lg:text-5xl font-semibold uppercase leading-[0.95]
-                         text-slate-900 dark:text-white mt-2">
-            {t.greeting}, {userProfile.name || (isRu ? 'Атлет' : 'Athlete')}
-          </h1>
-          <div className="flex flex-wrap items-center gap-2 mt-3">
-            <span className="chip bg-brand-300/15 border-brand-500/30 text-brand-800 dark:text-brand-300">
-              <Flame size={13} fill="currentColor" />
-              <span className="stat text-sm">{completedExercisesCount}</span>
-              {isRu ? 'упражнений' : 'exercises done'}
-            </span>
-            {totalExercises > 0 && (
-              <span className="chip surface-muted text-slate-600 dark:text-slate-300">
-                <Trophy size={13} className="text-slate-400" />
-                <span className="stat text-sm">{Math.round((completedExercisesCount / totalExercises) * 100)}%</span>
-                {isRu ? 'плана' : 'of plan'}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Level card */}
-        <div className="lg:w-[360px] shrink-0 rounded-[var(--radius-panel)] p-6 text-white relative overflow-hidden
-                        bg-slate-950 border border-slate-800">
-          <div className="hatch absolute -top-6 -right-6 w-48 h-48 rotate-12 opacity-70" aria-hidden="true" />
-          <Star size={110} className="absolute -bottom-6 -right-6 text-white/5 rotate-12" aria-hidden="true" />
-          <div className="relative z-10">
-            <div className="flex justify-between items-center mb-5">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-[var(--radius-control)] bg-brand-300 flex items-center justify-center">
-                  <Trophy size={22} className="text-slate-950" />
-                </div>
-                <div>
-                  <div className="eyebrow text-[10px] text-slate-400">{AT.level}</div>
-                  <div className="stat text-3xl mt-1">{currentLevel}</div>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="eyebrow text-[10px] text-slate-400">XP</div>
-                <div className="stat text-3xl mt-1 text-brand-300">
-                  <AnimatedNumber value={currentXP} locale={isRu ? 'ru-RU' : 'en-US'} />
-                </div>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between eyebrow text-[10px] text-slate-400">
-                <span>{AT.progressTo} {currentLevel + 1}</span>
-                <span className="tabular-nums">{xpIntoLevel} / {XP_PER_LEVEL}</span>
-              </div>
-              <div className="meter h-2 bg-white/10">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progressPercent}%` }}
-                  transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-                  className="meter-fill"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* ── Cinematic stage ────────────────────────────────────── */}
+      <HeroStage
+        userProfile={userProfile}
+        language={language}
+        level={currentLevel}
+        xp={currentXP}
+        xpIntoLevel={xpIntoLevel}
+        xpPerLevel={XP_PER_LEVEL}
+        exercisesDone={completedExercisesCount}
+        planProgress={totalExercises > 0 ? Math.round((completedExercisesCount / totalExercises) * 100) : 0}
+        targetCalories={todayPlan?.totalCalories ?? null}
+        recommendation={coachTip}
+        onNavigate={onNavigate}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* ── Left column ───────────────────────────────────────── */}
