@@ -140,10 +140,14 @@
    `dark:bg-brand-500/10`) still wins over the primitive.
 ============================================================ */
 @layer components {
+  /* Glass, not solid: the page-wide clip has to stay visible through the
+     content, while the blur keeps text off the moving footage. */
   .card,
   .panel {
-    background-color: #ffffff;
-    border: 1px solid rgb(223 225 229 / 0.8);
+    background-color: rgb(255 255 255 / 0.82);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgb(255 255 255 / 0.55);
     box-shadow: 0 1px 2px 0 rgb(10 12 15 / 0.05);
   }
   .card { border-radius: var(--radius-card); }
@@ -151,8 +155,8 @@
 
   .dark .card,
   .dark .panel {
-    background-color: #15171b;
-    border-color: #23262b;
+    background-color: rgb(21 23 27 / 0.72);
+    border-color: rgb(255 255 255 / 0.10);
     box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.4);
   }
 
@@ -172,12 +176,12 @@
 
   /* Muted inner surface used inside cards (lists, tips, guides) */
   .surface-muted {
-    background-color: #f7f8f8;
-    border: 1px solid rgb(223 225 229 / 0.8);
+    background-color: rgb(247 248 248 / 0.72);
+    border: 1px solid rgb(223 225 229 / 0.7);
   }
   .dark .surface-muted {
-    background-color: rgb(35 38 43 / 0.6);
-    border-color: rgb(56 60 67 / 0.6);
+    background-color: rgb(35 38 43 / 0.5);
+    border-color: rgb(255 255 255 / 0.08);
   }
 
   /* ── Buttons: pill shape, condensed display face ──────────── */
