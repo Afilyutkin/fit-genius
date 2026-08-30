@@ -1,6 +1,8 @@
 import { UserProfile, ChatMessage, DayPlan, MealDetails, PlannedMeal, ExerciseDetail } from "../types";
 import { describeSports, sportNames, totalWorkoutsPerWeek } from "../utils/profile";
 import { DAY_NAMES } from "../utils/days";
+import { summarizeHistoryForPrompt } from "../utils/planHistory";
+import { describeCompetitionForPrompt } from "../utils/competition";
 
 export const SYSTEM_INSTRUCTION_BASE = `
 You are Fit Genius AI, a world-class empathetic and motivating fitness & health coach.
@@ -657,6 +659,10 @@ export const generateWeeklyPlan = async (
   const key = (apiKey || localStorage.getItem('zenith_gemini_key') || '').trim();
   const lang = language === 'ru' ? 'Russian' : 'English';
   const mealsPerDay = Math.min(6, Math.max(2, Math.round(userProfile.mealsPerDay || 4)));
+  // What the user actually did in previous weeks: the plan continues from there.
+  const history = summarizeHistoryForPrompt(language);
+  // Periodisation brief: an athlete three weeks out needs a different week.
+  const competition = describeCompetitionForPrompt(userProfile, language);
 
   const systemInstruction = `You are a holistic Health AI named Fit Genius. 
   CRITICAL RULE: You MUST strictly adhere to the following user profile:
@@ -698,6 +704,8 @@ export const generateWeeklyPlan = async (
     - Provide realistic macro values per serving for each supplement.`
       : 'DISABLED. Return an empty array [] for sportsNutrition on every day.'}.
 
+  ${competition}
+  ${history}
   Return ONLY a raw JSON array of 7 DayPlan objects for a full week (Monday-Sunday). 
   Respond in ${lang}. Use the precise schema provided.`;
 
