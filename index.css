@@ -455,6 +455,27 @@ html, body {
 }
 .animate-stage-drift { animation: stage-drift 28s ease-in-out infinite; }
 
+/* Per-tab motion profiles. Each screen gets its own tempo so the tabs feel
+   like different rooms of the same building, not one repeated wallpaper. */
+.animate-stage-drift-fast { animation: stage-drift 15s ease-in-out infinite; }
+.animate-stage-drift-slow { animation: stage-drift 44s ease-in-out infinite; }
+
+/* Diagonal light streaks: speed lines for the training screen */
+@keyframes stage-sweep {
+  0%   { transform: translate3d(-40%, 12%, 0) rotate(-18deg); opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { transform: translate3d(140%, -12%, 0) rotate(-18deg); opacity: 0; }
+}
+.animate-stage-sweep { animation: stage-sweep 7s linear infinite; }
+
+/* Slow vertical rise, like steam over a plate */
+@keyframes stage-rise {
+  0%   { transform: translate3d(0, 12%, 0) scale(1.05); }
+  100% { transform: translate3d(0, -12%, 0) scale(1.15); }
+}
+.animate-stage-rise { animation: stage-rise 26s ease-in-out infinite alternate; }
+
 /* Edge fade so the ruler dissolves instead of ending on a hard cut */
 .ruler-mask {
   -webkit-mask-image: linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%);

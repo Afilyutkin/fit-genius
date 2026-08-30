@@ -6,6 +6,7 @@ import { normalizeSports } from './utils/profile';
 import Sidebar from './components/Sidebar';
 import AICoach from './components/AICoach';
 import ErrorBoundary from './components/ErrorBoundary';
+import AppBackdrop from './components/AppBackdrop';
 import DashboardView from './views/DashboardView';
 import WorkoutsView from './views/WorkoutsView';
 import NutritionView from './views/NutritionView';
@@ -327,7 +328,8 @@ const App: React.FC = () => {
   }, [activeTab, userProfile, apiKey, language, waterConsumed, weightHistory, awardXp, setApiKey, toggleExercise, handlePlanGenerated]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen">
+      <AppBackdrop tab={activeTab} />
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:z-[100] focus:top-3 focus:left-3 focus:px-4 focus:py-2 focus:rounded-xl focus:bg-brand-600 focus:text-white focus:font-semibold"
