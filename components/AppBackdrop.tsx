@@ -79,9 +79,9 @@ const AppBackdrop: React.FC<{ tab: Tab }> = ({ tab }) => {
 
       {/* Scrim: dark mode dims the footage, light mode washes it out to a tint
           so the light theme's dark text keeps its contrast. */}
-      <div className="absolute inset-0 bg-slate-50/88 dark:bg-slate-950/78" />
-      <div className="absolute inset-0 bg-gradient-to-b from-slate-50/60 via-transparent to-slate-50/80
-                      dark:from-slate-950/60 dark:via-transparent dark:to-slate-950/85" />
+      <div className="absolute inset-0 bg-slate-50/78 dark:bg-slate-950/62" />
+      <div className="absolute inset-0 bg-gradient-to-b from-slate-50/45 via-transparent to-slate-50/65
+                      dark:from-slate-950/45 dark:via-transparent dark:to-slate-950/70" />
     </div>
   );
 };
