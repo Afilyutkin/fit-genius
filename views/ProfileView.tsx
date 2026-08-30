@@ -11,6 +11,7 @@ import { archiveFinishedWeek } from '../utils/planHistory';
 import { Stage, Reveal, StageStat } from '../components/Stage';
 import { DEFAULT_SPORT, SPORT_LIMITS, totalWorkoutsPerWeek, totalMinutesPerWeek, sportNames } from '../utils/profile';
 import { DEFAULT_COMPETITION, PHASE_LABELS, phaseForWeeks, weeksUntil } from '../utils/competition';
+import { methodologyNames, describeLevelFocus } from '../utils/methodology';
 
 /** How many fitness goals the plan generator accepts at once. */
 const MAX_GOALS = 5;
@@ -477,6 +478,20 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                                 <option value="Amateur">{t.amateur}</option>
                                 <option value="Professional">{t.professional}</option>
                             </select>
+
+                            {/* What the level actually buys: the frameworks the plan is built on */}
+                            <div className="mt-2.5">
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                    {t.methodology}: <span className="text-slate-700 dark:text-slate-300">{describeLevelFocus(userProfile, language)}</span>
+                                </p>
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                    {methodologyNames(userProfile).slice(0, 4).map(name => (
+                                        <span key={name} className="chip surface-muted text-slate-600 dark:text-slate-300 text-[10px]">
+                                            {name}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
 
                         <div>
