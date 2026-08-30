@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Send, Bot, Sparkles, AlertTriangle, RefreshCw } from 'lucide-react';
 import { ChatMessage, UserProfile, Language } from '../types';
-import { generateCoachResponse, refinePlanWithConsultation } from '../services/geminiService';
+import { generateCoachResponse, refinePlanWithConsultation, describeGeminiError } from '../services/geminiService';
 import MarkdownContent from './MarkdownContent';
+import { totalWorkoutsPerWeek } from '../utils/profile';
 
 interface AICoachProps {
   userProfile: UserProfile;
@@ -24,8 +25,8 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
   const name = userProfile.name || (isRu ? 'атлет' : 'athlete');
 
   const greeting = isRu
-    ? `Привет, ${name}! Я ваш тренер Fit Genius. Ваша цель: ${userProfile.workoutsPerWeek} тренировок в неделю. Начнём?`
-    : `Hi ${name}! I'm your Fit Genius Coach. Your goal: ${userProfile.workoutsPerWeek} workouts a week. Ready to start?`;
+    ? `Привет, ${name}! Я ваш тренер Fit Genius. Ваша цель: ${totalWorkoutsPerWeek(userProfile)} тренировок в неделю. Начнём?`
+    : `Hi ${name}! I'm your Fit Genius Coach. Your goal: ${totalWorkoutsPerWeek(userProfile)} workouts a week. Ready to start?`;
 
   // Keep the greeting in the current language until the conversation actually starts.
   useEffect(() => {
@@ -85,7 +86,7 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
         id: `err-${Date.now()}`,
         role: 'model',
         isError: true,
-        text: e?.message || (isRu ? 'Неизвестная ошибка' : 'Unknown error'),
+        text: describeGeminiError(e, language),
       });
     } finally {
       setIsLoading(false);
@@ -112,7 +113,7 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
         id: `err-sync-${Date.now()}`,
         role: 'model',
         isError: true,
-        text: (isRu ? 'Не удалось обновить план: ' : 'Failed to update the plan: ') + (e?.message || ''),
+        text: (isRu ? 'Не удалось обновить план. ' : 'Failed to update the plan. ') + describeGeminiError(e, language),
       });
     } finally {
       setIsSyncing(false);
