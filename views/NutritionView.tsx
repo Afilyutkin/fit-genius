@@ -11,6 +11,7 @@ import AnimatedNumber from '../components/AnimatedNumber';
 import { Language, UserProfile, MealDetails, DayPlan } from '../types';
 import { generateWeeklyPlan, askPlanQuestion, generateMealDetails, generateSupplementTips, describeGeminiError } from '../services/geminiService';
 import { getTranslation } from '../utils/translations';
+import { archiveFinishedWeek } from '../utils/planHistory';
 import { dayLabel, shortDayLabel } from '../utils/days';
 
 interface NutritionViewProps {
@@ -227,8 +228,17 @@ const NutritionView: React.FC<NutritionViewProps> = ({
         setGenerateError(null);
         autoGenRef.current = true;
         try {
+            // File the week being replaced before the new plan overwrites it.
+            archiveFinishedWeek(userProfile);
             const plan = await generateWeeklyPlan(userProfile, apiKey, language);
-            setUserProfile(prev => ({ ...prev, weeklyPlan: plan, planLanguage: language, isSetup: true }));
+            setUserProfile(prev => ({
+                ...prev,
+                weeklyPlan: plan,
+                planLanguage: language,
+                planCreatedAt: new Date().toISOString(),
+                completedExercises: [],
+                isSetup: true,
+            }));
             setSelectedDayIndex(0);
         } catch (e: any) {
             setGenerateError(describeGeminiError(e, language));

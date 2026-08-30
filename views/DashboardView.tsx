@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, Tooltip, XAxis, YAxis } from 'recharts';
 import { DailyStats, UserProfile, Language, Achievement, Tab } from '../types';
 import {
-  Flame, Footprints, Clock, Activity, Watch, RefreshCw, Zap,
+  Flame, Footprints, Clock, Activity, Watch, RefreshCw, Zap, History,
   Trophy, Target, Scale, Droplet, Check, Users, Crown, Medal, ArrowDown, ArrowUp, Minus, AlertTriangle
 } from 'lucide-react';
 import { getTranslation } from '../utils/translations';
 import { motion, useReducedMotion } from 'motion/react';
 import AnimatedNumber from '../components/AnimatedNumber';
+import { loadPlanHistory } from '../utils/planHistory';
+import { PHASE_LABELS, phaseForWeeks, weeksUntil } from '../utils/competition';
 import HeroStage from '../components/HeroStage';
 
 interface DashboardProps {
@@ -46,6 +48,15 @@ const DashboardView: React.FC<DashboardProps> = ({
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [watchError, setWatchError] = useState<string | null>(null);
   const [newWeight, setNewWeight] = useState('');
+  const [planHistory] = useState(() => loadPlanHistory());
+
+  // null when there is no upcoming event, so the card stays out of the way
+  const competitionWeeks = (() => {
+    const c = userProfile.competition;
+    if (!c?.enabled || !c.date) return null;
+    const weeks = weeksUntil(c.date);
+    return Number.isNaN(weeks) || weeks < 0 ? null : weeks;
+  })();
 
   const today = new Date().toLocaleDateString(isRu ? 'ru-RU' : 'en-US', {
     weekday: 'long', month: 'long', day: 'numeric'
@@ -489,6 +500,78 @@ const DashboardView: React.FC<DashboardProps> = ({
 
         {/* ── Right column ──────────────────────────────────────── */}
         <div className="lg:col-span-4 space-y-6">
+          {/* Countdown to the event the plan is periodised for */}
+          {competitionWeeks !== null && (
+            <div className="card p-6 relative overflow-hidden">
+              <div className="hatch absolute -top-8 -right-8 w-40 h-40 rotate-12 opacity-40" aria-hidden="true" />
+              <div className="relative z-10">
+                <div className="flex items-center gap-2 mb-4">
+                  <Trophy size={20} className="text-brand-700 dark:text-brand-300" />
+                  <h2 className="font-display text-lg font-semibold uppercase tracking-wide text-slate-900 dark:text-white">
+                    {userProfile.competition?.sport || (isRu ? 'Соревнование' : 'Competition')}
+                  </h2>
+                </div>
+
+                <div className="flex items-baseline gap-2">
+                  <span className="stat text-5xl text-slate-900 dark:text-white">
+                    {competitionWeeks === 0 ? (isRu ? '0' : '0') : competitionWeeks}
+                  </span>
+                  <span className="eyebrow">
+                    {isRu ? 'нед. до старта' : 'week(s) to go'}
+                  </span>
+                </div>
+
+                <p className="chip bg-brand-300/15 border-brand-500/30 text-brand-800 dark:text-brand-300 mt-3">
+                  {PHASE_LABELS[language][phaseForWeeks(competitionWeeks)]}
+                </p>
+
+                {!!userProfile.competition?.goal && (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-3">
+                    {userProfile.competition.goal}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Week history: the memory the next plan is generated from */}
+          {planHistory.length > 0 && (
+            <div className="card p-6">
+              <div className="flex items-center gap-2 mb-5">
+                <History size={20} className="text-brand-700 dark:text-brand-300" />
+                <h2 className="font-display text-lg font-semibold uppercase tracking-wide text-slate-900 dark:text-white">
+                  {AT.weekHistory}
+                </h2>
+              </div>
+
+              <ul className="space-y-3">
+                {[...planHistory].reverse().slice(0, 4).map((week, i) => (
+                  <li key={week.archivedAt || i} className="surface-muted rounded-[var(--radius-control)] p-3">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                        {new Date(week.archivedAt).toLocaleDateString(isRu ? 'ru-RU' : 'en-US',
+                          { day: 'numeric', month: 'short' })}
+                      </span>
+                      <span className="stat text-lg text-slate-900 dark:text-white">
+                        {week.completionPercent}%
+                      </span>
+                    </div>
+                    <div className="meter h-1.5 mt-2">
+                      <div className="meter-fill" style={{ width: `${week.completionPercent}%` }} />
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">
+                      {week.completedExercises}/{week.totalExercises} {AT.exercisesShort} · {week.weightKg} {isRu ? 'кг' : 'kg'}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-4">
+                {AT.weekHistoryHint}
+              </p>
+            </div>
+          )}
+
           {/* Quests */}
           <div className="card p-6">
             <div className="flex items-center gap-2 mb-5">

@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UserProfile, Language, SportPreference } from '../types';
+import { UserProfile, Language, SportPreference, CompetitionTarget } from '../types';
 import {
     Save, AlertTriangle, Activity, Calendar, Clock, Utensils, Key, CheckCircle, XCircle,
     Loader2, Wand2, Target, Check, TrendingUp, RefreshCw, Trash2, Eye, EyeOff,
-    User as UserIcon, ExternalLink, Plus
+    User as UserIcon, ExternalLink, Plus, Trophy
 } from 'lucide-react';
 import { validateApiKey, generateWeeklyPlan, describeGeminiError, describeKeyCheck } from '../services/geminiService';
 import { getTranslation } from '../utils/translations';
+import { archiveFinishedWeek } from '../utils/planHistory';
 import { Stage, Reveal, StageStat } from '../components/Stage';
-import { DEFAULT_SPORT, SPORT_LIMITS, totalWorkoutsPerWeek, totalMinutesPerWeek } from '../utils/profile';
+import { DEFAULT_SPORT, SPORT_LIMITS, totalWorkoutsPerWeek, totalMinutesPerWeek, sportNames } from '../utils/profile';
+import { DEFAULT_COMPETITION, PHASE_LABELS, phaseForWeeks, weeksUntil } from '../utils/competition';
 
 /** How many fitness goals the plan generator accepts at once. */
 const MAX_GOALS = 5;
@@ -141,6 +143,14 @@ const ProfileView: React.FC<ProfileViewProps> = ({
         setUserProfile(prev => ({ ...prev, sports: [...prev.sports, { ...DEFAULT_SPORT }] }));
     };
 
+    const competition = userProfile.competition ?? DEFAULT_COMPETITION;
+    const updateCompetition = (patch: Partial<CompetitionTarget>) => {
+        setUserProfile(prev => ({
+            ...prev,
+            competition: { ...DEFAULT_COMPETITION, ...prev.competition, ...patch },
+        }));
+    };
+
     const removeSport = (index: number) => {
         setUserProfile(prev => ({ ...prev, sports: prev.sports.filter((_, i) => i !== index) }));
     };
@@ -171,11 +181,14 @@ const ProfileView: React.FC<ProfileViewProps> = ({
         setIsGenerating(true);
         setGenerateError(null);
         try {
+            // File the week being replaced before the new plan overwrites it.
+            archiveFinishedWeek(userProfile);
             const plan = await generateWeeklyPlan(userProfile, apiKey, language);
             setUserProfile(prev => ({
                 ...prev,
                 weeklyPlan: plan,
                 planLanguage: language,
+                planCreatedAt: new Date().toISOString(),
                 completedExercises: [],
                 isSetup: true
             }));
@@ -200,6 +213,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     ];
 
     const goalsFull = userProfile.fitnessGoals.length >= MAX_GOALS;
+    const competitionWeeks = competition.date ? weeksUntil(competition.date) : NaN;
     const weeklyTotal = totalWorkoutsPerWeek(userProfile);
     const weeklyHours = Math.round(totalMinutesPerWeek(userProfile) / 6) / 10;
 
@@ -554,6 +568,89 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                         </div>
                     </div>
                 </section>
+
+                {/* Competition target: turns the plan into a periodised build-up */}
+                <div className="card p-6 sm:p-8 md:col-span-2">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                        <span className="relative inline-flex shrink-0 mt-0.5">
+                            <input
+                                type="checkbox"
+                                className="sr-only peer"
+                                checked={competition.enabled}
+                                onChange={(e) => updateCompetition({ enabled: e.target.checked })}
+                            />
+                            <span className="block w-10 h-6 rounded-full transition-colors bg-slate-300 dark:bg-slate-700
+                                             peer-checked:bg-brand-300" />
+                            <span className="absolute left-1 top-1 w-4 h-4 rounded-full bg-white transition-transform
+                                             peer-checked:translate-x-4" />
+                        </span>
+                        <span>
+                            <span className="font-display text-lg font-semibold uppercase tracking-wide
+                                             text-slate-900 dark:text-white flex items-center gap-2">
+                                <Trophy size={17} className="text-brand-700 dark:text-brand-300" />
+                                {t.competition}
+                            </span>
+                            <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                                {t.competitionHint}
+                            </span>
+                        </span>
+                    </label>
+
+                    {competition.enabled && (
+                        <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-4 animate-fade-in">
+                            <div>
+                                <label htmlFor="comp-sport" className="label">{t.competitionSport}</label>
+                                <input
+                                    id="comp-sport"
+                                    type="text"
+                                    list="comp-sport-options"
+                                    value={competition.sport}
+                                    onChange={(e) => updateCompetition({ sport: e.target.value })}
+                                    placeholder={sportNames(userProfile)[0] || (isRu ? 'например, бег' : 'e.g. running')}
+                                    className="input"
+                                />
+                                <datalist id="comp-sport-options">
+                                    {sportNames(userProfile).map(name => <option key={name} value={name} />)}
+                                </datalist>
+                            </div>
+
+                            <div>
+                                <label htmlFor="comp-date" className="label">{t.competitionDate}</label>
+                                <input
+                                    id="comp-date"
+                                    type="date"
+                                    value={competition.date}
+                                    min={new Date().toISOString().slice(0, 10)}
+                                    onChange={(e) => updateCompetition({ date: e.target.value })}
+                                    className="input"
+                                />
+                            </div>
+
+                            <div>
+                                <label htmlFor="comp-goal" className="label">{t.competitionGoal}</label>
+                                <input
+                                    id="comp-goal"
+                                    type="text"
+                                    value={competition.goal}
+                                    onChange={(e) => updateCompetition({ goal: e.target.value })}
+                                    placeholder={isRu ? 'например, полумарафон за 1:45' : 'e.g. half marathon under 1:45'}
+                                    className="input"
+                                />
+                            </div>
+
+                            {competition.date && (
+                                <p className="sm:col-span-3 text-[11px] text-slate-500 dark:text-slate-400">
+                                    {competitionWeeks < 0
+                                        ? t.competitionPast
+                                        : `${PHASE_LABELS[language][phaseForWeeks(competitionWeeks)]} · ${
+                                            competitionWeeks === 0
+                                                ? (isRu ? 'старт на этой неделе' : 'event this week')
+                                                : (isRu ? `осталось ${competitionWeeks} нед.` : `${competitionWeeks} week(s) to go`)}`}
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </div>
 
                 {/* ── Medical ───────────────────────────────────── */}
                 <section className="panel p-6 sm:p-7">
