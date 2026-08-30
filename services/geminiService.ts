@@ -3,6 +3,7 @@ import { describeSports, sportNames, totalWorkoutsPerWeek } from "../utils/profi
 import { DAY_NAMES } from "../utils/days";
 import { summarizeHistoryForPrompt } from "../utils/planHistory";
 import { describeCompetitionForPrompt } from "../utils/competition";
+import { describeMethodologyForPrompt } from "../utils/methodology";
 
 export const SYSTEM_INSTRUCTION_BASE = `
 You are Fit Genius AI, a world-class empathetic and motivating fitness & health coach.
@@ -663,6 +664,9 @@ export const generateWeeklyPlan = async (
   const history = summarizeHistoryForPrompt(language);
   // Periodisation brief: an athlete three weeks out needs a different week.
   const competition = describeCompetitionForPrompt(userProfile, language);
+  // Level- and sport-appropriate coaching frameworks, so a first-timer and a
+  // competitive athlete stop getting the same undifferentiated week.
+  const methodology = describeMethodologyForPrompt(userProfile, language);
 
   const systemInstruction = `You are a holistic Health AI named Fit Genius. 
   CRITICAL RULE: You MUST strictly adhere to the following user profile:
@@ -704,6 +708,7 @@ export const generateWeeklyPlan = async (
     - Provide realistic macro values per serving for each supplement.`
       : 'DISABLED. Return an empty array [] for sportsNutrition on every day.'}.
 
+  ${methodology}
   ${competition}
   ${history}
   Return ONLY a raw JSON array of 7 DayPlan objects for a full week (Monday-Sunday). 
