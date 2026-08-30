@@ -1,13 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 
 /** Each tab gets its own light, tempo and clip, so the app reads as rooms. */
 export type StageVariant = 'dashboard' | 'workouts' | 'nutrition' | 'profile';
 
 interface VariantLook {
-  /** Clip looked for in `public/video/`; falls back to the painted backdrop. */
-  video: string;
-  /** Painted fallback layers: position, size, colour, motion class. */
+  /** Painted light layers: position, size, colour, motion class. */
   layers: { className: string; color: string }[];
   /** Extra diagonal streaks, used to make training feel fast. */
   streaks?: boolean;
@@ -18,7 +16,6 @@ interface VariantLook {
 const VARIANTS: Record<StageVariant, VariantLook> = {
   // Command centre: three slow lights, the widest palette of the four.
   dashboard: {
-    video: '/video/dashboard.mp4',
     veil: 'from-slate-950/70 via-slate-950/45 to-slate-950/90',
     layers: [
       { className: '-top-1/3 -left-1/4 w-[80%] h-[120%] animate-stage-drift', color: 'rgba(183,236,30,0.20)' },
@@ -28,7 +25,6 @@ const VARIANTS: Record<StageVariant, VariantLook> = {
   },
   // Training: hot, fast, with light streaks reading as speed.
   workouts: {
-    video: '/video/workouts.mp4',
     veil: 'from-slate-950/75 via-slate-950/50 to-slate-950/90',
     layers: [
       { className: '-top-1/4 left-[-10%] w-[75%] h-[130%] animate-stage-drift-fast', color: 'rgba(183,236,30,0.24)' },
@@ -38,7 +34,6 @@ const VARIANTS: Record<StageVariant, VariantLook> = {
   },
   // Nutrition: cool and calm, a slow rise like steam off a plate.
   nutrition: {
-    video: '/video/nutrition.mp4',
     veil: 'from-slate-950/70 via-slate-950/45 to-slate-950/90',
     layers: [
       { className: 'bottom-[-20%] left-[-5%] w-[70%] h-[120%] animate-stage-rise', color: 'rgba(18,194,224,0.20)' },
@@ -47,7 +42,6 @@ const VARIANTS: Record<StageVariant, VariantLook> = {
   },
   // Profile: the quietest screen, one barely-moving light behind a form.
   profile: {
-    video: '/video/profile.mp4',
     veil: 'from-slate-950/75 via-slate-950/55 to-slate-950/90',
     layers: [
       { className: 'top-[-30%] left-1/4 w-[70%] h-[130%] animate-stage-drift-slow', color: 'rgba(183,236,30,0.14)' },
@@ -69,22 +63,16 @@ const VARIANTS: Record<StageVariant, VariantLook> = {
 export const Stage: React.FC<{
   children: React.ReactNode;
   variant?: StageVariant;
-  /** Overrides the variant's default clip path. */
-  videoSrc?: string;
   className?: string;
-}> = ({ children, variant = 'dashboard', videoSrc, className = '' }) => {
+}> = ({ children, variant = 'dashboard', className = '' }) => {
   const look = VARIANTS[variant];
-  const [videoReady, setVideoReady] = useState(false);
-  const [videoFailed, setVideoFailed] = useState(false);
   const reduce = useReducedMotion();
 
-  const src = videoSrc ?? look.video;
-  // A still page has no business downloading a looping clip.
-  const useVideo = !!src && !videoFailed && !reduce;
-
   return (
+    // Translucent: the page-wide backdrop shows through, so the stage frames
+    // the same animation the rest of the page scrolls over.
     <section className={`relative overflow-hidden rounded-[24px] sm:rounded-[32px] lg:rounded-[40px]
-                         bg-slate-950 border border-slate-800 text-white ${className}`}>
+                         bg-slate-950/85 dark:bg-slate-950/50 backdrop-blur-[2px] border border-white/10 text-white ${className}`}>
       <div className="absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
         {/* Painted backdrop: always mounted, so a missing clip is invisible */}
         <div className="absolute inset-0">
@@ -105,24 +93,6 @@ export const Stage: React.FC<{
           ))}
         </div>
 
-        {useVideo && (
-          <video
-            src={src}
-            autoPlay
-            loop
-            muted
-            playsInline
-            preload="metadata"
-            onCanPlay={() => setVideoReady(true)}
-            onError={() => setVideoFailed(true)}
-            className="absolute inset-0 w-full h-full object-cover transition-opacity duration-[1500ms]"
-            style={{ opacity: videoReady ? 1 : 0 }}
-          />
-        )}
-
-        {/* Extra scrim once a clip is on screen: the painted backdrop is soft,
-            real footage is not, and the headline has to stay readable. */}
-        {videoReady && <div className="absolute inset-0 bg-slate-950/60" />}
         <div className={`absolute inset-0 bg-gradient-to-b ${look.veil}`} />
       </div>
 

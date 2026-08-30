@@ -60,7 +60,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, language, se
           DESKTOP SIDEBAR — lg and up
       ============================================================ */}
       <aside className="hidden lg:flex flex-col w-64 h-screen fixed left-0 top-0 z-50
-                        bg-white dark:bg-slate-900 border-r border-slate-200/70 dark:border-slate-800">
+                        bg-white/85 dark:bg-slate-900/65 backdrop-blur-xl border-r border-slate-200/70 dark:border-white/10">
         {/* Logo */}
         <div className="h-20 flex items-center px-6 border-b border-slate-200/70 dark:border-slate-800 shrink-0">
           <LogoTile size={38} glyph={21} className="mr-3" />
@@ -161,7 +161,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, language, se
           MOBILE TOP HEADER
       ============================================================ */}
       <header className="flex lg:hidden fixed top-0 inset-x-0 h-16 z-50 items-center justify-between px-4
-                         bg-white/90 dark:bg-slate-900/90 backdrop-blur-md
+                         bg-white/85 dark:bg-slate-900/70 backdrop-blur-xl
                          border-b border-slate-200/70 dark:border-slate-800">
         <div className="flex items-center gap-2.5">
           <LogoTile size={34} glyph={19} />
@@ -195,7 +195,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, language, se
       ============================================================ */}
       <nav
         className="flex lg:hidden fixed bottom-0 inset-x-0 z-50
-                   bg-white/95 dark:bg-slate-900/95 backdrop-blur-md
+                   bg-white/88 dark:bg-slate-900/75 backdrop-blur-xl
                    border-t border-slate-200/70 dark:border-slate-800"
         style={{ paddingBottom: 'max(0.375rem, env(safe-area-inset-bottom))' }}
         aria-label={isRu ? 'Основная навигация' : 'Main navigation'}

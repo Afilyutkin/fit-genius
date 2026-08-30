@@ -19,12 +19,6 @@ interface HeroStageProps {
   /** Real coaching line from today's plan; the expandable card shows it in full. */
   recommendation: string;
   onNavigate: (tab: Tab) => void;
-  /**
-   * Optional looping backdrop, e.g. "/hero.mp4" served from `public/`.
-   * Without it the stage falls back to a CSS aurora, so the app ships with
-   * no external media dependency.
-   */
-  videoSrc?: string;
 }
 
 /** 61 ticks, every 5th taller: a measuring rule for the progress readout. */
@@ -107,7 +101,7 @@ const InfoCard: React.FC<{
  */
 const HeroStage: React.FC<HeroStageProps> = ({
   userProfile, language, level, xp, xpIntoLevel, xpPerLevel,
-  exercisesDone, planProgress, targetCalories, recommendation, onNavigate, videoSrc,
+  exercisesDone, planProgress, targetCalories, recommendation, onNavigate,
 }) => {
   const isRu = language === 'ru';
   const [expanded, setExpanded] = useState(false);
@@ -118,7 +112,7 @@ const HeroStage: React.FC<HeroStageProps> = ({
   const progressPercent = Math.round((xpIntoLevel / xpPerLevel) * 100);
 
   return (
-    <Stage variant="dashboard" videoSrc={videoSrc}>
+    <Stage variant="dashboard">
         {/* ── Top bar ───────────────────────────────────────────── */}
         <div className="flex items-start justify-between gap-4 relative">
           <Reveal delay={100} from="down">
