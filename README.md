@@ -1,30 +1,27 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Stage background clips
 
-# Run and deploy your AI Studio app
+One looping clip per tab, played behind the lit slab at the top of each screen.
 
-This contains everything you need to run your app locally.
+| File | Tab | Look |
+|---|---|---|
+| `dashboard.mp4` | Дашборд | three slow lights drifting over carbon, the widest palette |
+| `workouts.mp4` | Тренировки | hot volt and flame, fast diagonal sweep reading as speed |
+| `nutrition.mp4` | Питание | cool aqua rising slowly, like steam off a plate |
+| `profile.mp4` | Профиль | one barely-moving volt light, the quietest of the four |
 
-View your app in AI Studio: https://ai.studio/apps/5f83e1c8-9ed8-4c7e-9ee5-7ca264b25ece
+## Rules
 
-## Run Locally
+- **Optional.** Delete any file and that tab silently falls back to the painted
+  CSS backdrop, which carries the same palette and motion. Nothing breaks.
+- **Seamless.** Each clip is a palindrome (forward then reversed), so it loops
+  with no visible cut.
+- **Muted and decorative.** They carry no information, sit behind a dark veil,
+  and are skipped entirely under `prefers-reduced-motion`.
+- **Keep them small.** These are ~200-400 KB each at 1280x720. A multi-megabyte
+  clip would wreck first paint for a background nobody looks at directly.
 
-**Prerequisites:**  Node.js
+## Replacing one
 
-1. Install dependencies:
-   `npm install`
-2. Run the app:
-   `npm run dev`
-3. Open the app, go to **Profile** and paste your [Gemini API key](https://ai.google.dev/).
-   The key is stored in this browser's `localStorage` only — it is never sent anywhere
-   except to Google's Generative Language API.
-
-## Scripts
-
-| Command | Description |
-| --- | --- |
-| `npm run dev` | Start the dev server on port 3000 |
-| `npm run build` | Production build into `dist/` |
-| `npm run preview` | Serve the production build |
-| `npm run lint` | Type-check with `tsc --noEmit` |
+Drop a new `.mp4` with the same filename. Recommended: 1280x720, 24 fps,
+10-20 seconds, H.264, `-movflags +faststart`, no audio track. Dark source
+footage works best, since the veil above it is what keeps the text readable.
