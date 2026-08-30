@@ -431,6 +431,36 @@ html, body {
 .dark .markdown-content a { @apply text-brand-300; }
 .dark .markdown-content code:not(pre code) { @apply bg-slate-800; }
 
+/* ============================================================
+   CINEMATIC STAGE (dashboard hero)
+   Ambient loops only: they carry no information, so the global
+   reduced-motion block below stops all of them.
+============================================================ */
+@keyframes ticker {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.animate-ticker { animation: ticker 12s linear infinite; }
+
+@keyframes spin-slow {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.animate-spin-bg { animation: spin-slow 30s linear infinite; }
+
+/* Slow parallax drift for the backdrop when no video is supplied */
+@keyframes stage-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
+  50%      { transform: translate3d(-2%, -1.5%, 0) scale(1.12); }
+}
+.animate-stage-drift { animation: stage-drift 28s ease-in-out infinite; }
+
+/* Edge fade so the ruler dissolves instead of ending on a hard cut */
+.ruler-mask {
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%);
+          mask-image: linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%);
+}
+
 /* Respect users who ask for less motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Tab, UserProfile, DailyStats, Language, Theme } from './types';
 import { normalizeWeeklyPlan } from './services/geminiService';
+import { normalizeSports } from './utils/profile';
 import Sidebar from './components/Sidebar';
 import AICoach from './components/AICoach';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -29,9 +30,8 @@ const INITIAL_PROFILE: UserProfile = {
   fitnessGoals: ['General Health'],
   fitnessLevel: 'Beginner',
   contraindications: '',
-  preferredSports: ['Running'],
-  workoutsPerWeek: 3,
-  workoutDurationMin: 45,
+  sports: [{ name: 'Running', timesPerWeek: 3, durationMin: 45 }],
+  mealsPerDay: 4,
   dietaryPreferences: 'Balanced',
   activityLevel: 'Moderate',
   isSetup: false,
@@ -83,11 +83,20 @@ const hydrateProfile = (raw: any): UserProfile => {
   merged.fitnessGoals = Array.isArray(raw.fitnessGoals) && raw.fitnessGoals.length
     ? raw.fitnessGoals
     : INITIAL_PROFILE.fitnessGoals;
-  merged.preferredSports = Array.isArray(raw.preferredSports) ? raw.preferredSports : [];
+  // Handles both the current shape and pre-per-sport profiles.
+  merged.sports = normalizeSports(raw);
+  // Drop the superseded keys so they do not linger in storage for ever.
+  delete (merged as any).preferredSports;
+  delete (merged as any).workoutsPerWeek;
+  delete (merged as any).workoutDurationMin;
   merged.completedExercises = Array.isArray(raw.completedExercises) ? raw.completedExercises : [];
   merged.weeklyPlan = Array.isArray(raw.weeklyPlan) && raw.weeklyPlan.length
     ? normalizeWeeklyPlan(raw.weeklyPlan, raw.planLanguage === 'ru' ? 'ru' : 'en')
     : null;
+  // Profiles saved before this field existed fall back to the default above.
+  merged.mealsPerDay = Number.isFinite(raw.mealsPerDay)
+    ? Math.min(6, Math.max(2, Math.round(raw.mealsPerDay)))
+    : INITIAL_PROFILE.mealsPerDay;
   merged.xp = Number.isFinite(raw.xp) ? raw.xp : 0;
   merged.level = Number.isFinite(raw.level) && raw.level > 0 ? raw.level : 1;
   return merged;
@@ -309,6 +318,7 @@ const App: React.FC = () => {
             waterConsumed={waterConsumed}
             setWaterConsumed={setWaterConsumed}
             onAwardXp={awardXp}
+            onNavigate={setActiveTab}
           />
         );
     }

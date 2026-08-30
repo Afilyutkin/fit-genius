@@ -27,20 +27,31 @@ export interface ExerciseDetail {
   notes?: string;
 }
 
+/** One meal in the day, in the order it is eaten. */
+export interface PlannedMeal extends MealDetails {
+  /** Localised slot label, e.g. "Завтрак" or "Перекус 2". */
+  slot: string;
+}
+
 export interface DayPlan {
   day: string;
   workoutTitle: string;
   exercises: ExerciseDetail[]; // Changed from string[] to structured object
   totalCalories: number;
   meals: {
-    breakfast: MealDetails;
-    lunch: MealDetails;
-    dinner: MealDetails;
-    snack: MealDetails;
+    /** Ordered list; its length follows the profile's mealsPerDay. */
+    items: PlannedMeal[];
     sportsNutrition: MealDetails[];
   };
   workoutTip: string;
   nutritionTip: string;
+}
+
+/** One sport the user trains, with its own weekly rhythm. */
+export interface SportPreference {
+  name: string;
+  timesPerWeek: number;
+  durationMin: number;
 }
 
 export interface UserProfile {
@@ -54,9 +65,9 @@ export interface UserProfile {
   fitnessGoals: string[]; // Changed from single string to array
   fitnessLevel: 'Beginner' | 'Amateur' | 'Professional'; // New field
   contraindications: string;
-  preferredSports: string[];
-  workoutsPerWeek: number;
-  workoutDurationMin: number;
+  sports: SportPreference[];
+  /** How many times a day the user eats (excluding supplements). */
+  mealsPerDay: number;
   dietaryPreferences: string;
   activityLevel: 'Sedentary' | 'Moderate' | 'Active' | 'Extra Active';
   isSetup: boolean;
