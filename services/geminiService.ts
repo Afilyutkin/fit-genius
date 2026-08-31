@@ -1,4 +1,4 @@
-import { UserProfile, ChatMessage, DayPlan, MealDetails, PlannedMeal, ExerciseDetail } from "../types";
+import { UserProfile, ChatMessage, DayPlan, MealDetails, PlannedMeal, ExerciseDetail, SessionBlock } from "../types";
 import { describeSports, sportNames, totalWorkoutsPerWeek } from "../utils/profile";
 import { DAY_NAMES } from "../utils/days";
 import { summarizeHistoryForPrompt } from "../utils/planHistory";
@@ -63,7 +63,7 @@ const isOverloaded = (status: number, message: string): boolean =>
 /** Error codes the UI can translate, instead of showing raw API English. */
 export type GeminiErrorCode =
   | 'no_key' | 'bad_key' | 'rate_limit' | 'overloaded' | 'timeout'
-  | 'network' | 'no_model' | 'empty' | 'blocked' | 'unknown';
+  | 'network' | 'no_model' | 'empty' | 'blocked' | 'region' | 'unknown';
 
 export class GeminiError extends Error {
   code: GeminiErrorCode;
@@ -173,6 +173,10 @@ const ERROR_TEXT: Record<GeminiErrorCode, { en: string; ru: string }> = {
     en: 'Gemini refused to answer this request. Try rephrasing your profile details.',
     ru: 'Gemini отказался отвечать на этот запрос. Попробуйте изменить формулировки в профиле.',
   },
+  region: {
+    en: 'Google does not serve the Gemini API from your region ("User location is not supported"). Any key gets the same answer. Use a VPN, or route requests through your own server in a supported region.',
+    ru: 'Google не обслуживает Gemini API из вашего региона («User location is not supported»). Любой ключ получит тот же ответ. Нужен VPN или запросы через ваш сервер в поддерживаемом регионе.',
+  },
   unknown: { en: '', ru: '' },
 };
 
@@ -251,6 +255,10 @@ const geminiRest = async (
       if (isOverloaded(res.status, apiMsg)) {
         console.warn(`[Fit Genius] Model ${model} is overloaded, trying the next one.`, apiMsg);
         return { retry: 'overloaded' };
+      }
+      // Geo-blocking answers 400 for every key; saying "bad key" would be wrong.
+      if (/location is not supported|not available in your country|not supported for the API use/i.test(apiMsg)) {
+        throw new GeminiError('region', ERROR_TEXT.region.en);
       }
       if (res.status === 400 && /api key/i.test(apiMsg)) {
         throw new GeminiError('bad_key', ERROR_TEXT.bad_key.en);
@@ -404,9 +412,17 @@ export const repairJson = (str: string): string => {
    Everything below coerces the response into the DayPlan shape.
 ============================================================ */
 
+/**
+ * The prompt forbids em-dashes and the model keeps producing them anyway, so
+ * the guarantee is made here instead of hoping: " word - word " reads the same
+ * and matches the rest of the interface.
+ */
+const stripDashes = (text: string): string =>
+  text.replace(/\s*[—–]\s*/g, ', ').replace(/,\s*,/g, ',');
+
 const toText = (v: any, fallback = ''): string => {
   if (v === null || v === undefined) return fallback;
-  if (typeof v === 'string') return v.trim() || fallback;
+  if (typeof v === 'string') return stripDashes(v).trim() || fallback;
   if (typeof v === 'number' || typeof v === 'boolean') return String(v);
   if (Array.isArray(v)) return v.map(x => toText(x)).filter(Boolean).join(', ') || fallback;
   return fallback;
@@ -486,6 +502,17 @@ const normalizeMealList = (meals: any, language: 'en' | 'ru'): PlannedMeal[] => 
     .filter(meal => !!meal.name);
 };
 
+const BLOCKS: SessionBlock[] = ['warmup', 'main', 'accessory', 'cooldown'];
+
+/** Older plans and sloppy responses carry no block; treat those as main work. */
+const toBlock = (raw: any): SessionBlock => {
+  const v = String(raw ?? '').toLowerCase();
+  if (/warm|разм/.test(v)) return 'warmup';
+  if (/cool|down|заминк|растяж/.test(v)) return 'cooldown';
+  if (/access|подсоб|доп/.test(v)) return 'accessory';
+  return BLOCKS.includes(v as SessionBlock) ? (v as SessionBlock) : 'main';
+};
+
 const normalizeExercise = (raw: any): ExerciseDetail | null => {
   const name = toText(raw?.name ?? raw?.exercise ?? raw?.title);
   if (!name) return null;
@@ -495,6 +522,8 @@ const normalizeExercise = (raw: any): ExerciseDetail | null => {
     // The model happily returns `reps: 12` — the UI calls string methods on it.
     reps: toText(raw?.reps ?? raw?.repetitions, '-'),
     rest: toText(raw?.rest ?? raw?.restTime),
+    intensity: toText(raw?.intensity ?? raw?.effort ?? raw?.rpe) || undefined,
+    block: toBlock(raw?.block ?? raw?.phase ?? raw?.section),
     notes: raw?.notes ? toMarkdown(raw.notes) : undefined,
   };
 };
@@ -543,7 +572,7 @@ const normalizeDetails = (raw: any): Partial<MealDetails> => ({
 });
 
 export type KeyCheckCode =
-  | 'ok' | 'empty' | 'rejected' | 'wrong_type' | 'restricted' | 'disabled' | 'unverified';
+  | 'ok' | 'empty' | 'rejected' | 'wrong_type' | 'restricted' | 'region' | 'disabled' | 'unverified';
 
 export interface KeyCheckResult {
   ok: boolean;
@@ -560,6 +589,10 @@ export interface KeyCheckResult {
  * (403 on localhost but fine in production), a project where the Generative
  * Language API was never enabled, and a key from a different Google product.
  */
+/** True when the string is shaped like a Google AI Studio key. */
+export const looksLikeStudioKey = (key: string): boolean =>
+  /^AIza[0-9A-Za-z_-]{30,}$/.test((key || '').trim());
+
 export const validateApiKey = async (apiKey: string): Promise<KeyCheckResult> => {
   const key = apiKey?.trim();
   if (!key || key.length < 10) return { ok: false, code: 'empty' };
@@ -578,6 +611,9 @@ export const validateApiKey = async (apiKey: string): Promise<KeyCheckResult> =>
     const msg: string = data?.error?.message || '';
     const status: string = data?.error?.status || '';
 
+    if (/location is not supported|not available in your country|not supported for the API use/i.test(msg)) {
+      return { ok: false, code: 'region', detail: msg };
+    }
     if (/SERVICE_DISABLED/i.test(status) || /has not been used|is disabled|enable it by visiting/i.test(msg)) {
       return { ok: false, code: 'disabled', detail: msg };
     }
@@ -614,14 +650,18 @@ export const describeKeyCheck = (result: KeyCheckResult, language: 'en' | 'ru' =
       return isRu
         ? 'Google отклонил ключ из-за ограничений: он привязан к другому сайту или IP. Разрешите текущий адрес в настройках ключа или используйте ключ без ограничений.'
         : 'Google rejected the key because of its restrictions: it is bound to another site or IP. Allow the current address in the key settings, or use an unrestricted key.';
+    case 'region':
+      return isRu
+        ? 'Google не обслуживает Gemini API из вашего региона: он отвечает «User location is not supported». Ключ здесь ни при чём, тот же ответ придёт на любой ключ. Нужен доступ из поддерживаемой страны: либо через VPN, либо запросы должны идти через ваш сервер, размещённый в поддерживаемом регионе.'
+        : 'Google does not serve the Gemini API from your region: it answers "User location is not supported". The key is not the problem, any key gets the same answer. You need access from a supported country, either through a VPN or by routing requests through your own server hosted in a supported region.';
     case 'wrong_type':
       return isRu
         ? 'Это не ключ Gemini API, а токен другого сервиса Google: на него Google отвечает «ожидался OAuth-токен». Нужен ключ из Google AI Studio (ai.google.dev), он начинается с «AIza» и создаётся кнопкой Get API key.'
         : 'This is not a Gemini API key but a credential from another Google service: Google answers that it expected an OAuth token. You need a key from Google AI Studio (ai.google.dev); it starts with "AIza" and is created with the Get API key button.';
     case 'rejected':
       return isRu
-        ? 'Google не принял этот ключ. Убедитесь, что он создан в Google AI Studio (ai.google.dev) — ключи оттуда начинаются с «AIza». Ключи от других сервисов Google здесь не работают.'
-        : 'Google did not accept this key. Make sure it was created in Google AI Studio (ai.google.dev) — those keys start with "AIza". Keys from other Google services do not work here.';
+        ? 'Google не принял этот ключ. Убедитесь, что он создан в Google AI Studio (ai.google.dev). Ключи оттуда начинаются с «AIza». Ключи от других сервисов Google здесь не работают.'
+        : 'Google did not accept this key. Make sure it was created in Google AI Studio (ai.google.dev). Those keys start with "AIza". Keys from other Google services do not work here.';
     case 'unverified':
       return isRu
         ? 'Не удалось проверить ключ: нет ответа от Google. Ключ сохранён, попробуйте создать план.'
@@ -712,6 +752,10 @@ export const generateWeeklyPlan = async (
   ${competition}
   ${history}
   Return ONLY a raw JSON array of 7 DayPlan objects for a full week (Monday-Sunday). 
+  LANGUAGE: EVERY string a user can read must be written in ${lang}, with no exceptions and no mixing:
+  workoutTitle, exercise names, meal names and slots, supplement names, workoutTip and nutritionTip.
+  Do not leave English terms such as "Rest Day", "Full Body" or "Cardio" untranslated when ${lang} is not English.
+  Never use em-dash or en-dash characters anywhere; use a comma or a regular hyphen.
   Respond in ${lang}. Use the precise schema provided.`;
 
   const prompt = `
@@ -720,7 +764,7 @@ export const generateWeeklyPlan = async (
     [{ 
       "day": "Monday", 
       "workoutTitle": "string (Focus on favorite sports)", 
-      "exercises": [{ "name": "string", "sets": number, "reps": "string", "rest": "string" }], 
+      "exercises": [{ "block": "warmup | main | accessory | cooldown", "name": "string", "sets": number, "reps": "string", "rest": "string", "intensity": "string, prescribed effort e.g. RPE 7 or 70% of 1RM or 5:30/km pace" }], 
       "totalCalories": number (Calculated for ${userProfile.weight}kg user), 
       "meals": { 
         "items": [{ "slot": "string, the meal's name in ${lang} e.g. Breakfast / Lunch / Snack / Dinner", "name": "string", "calories": number, "protein": number, "fats": number, "carbs": number }],
