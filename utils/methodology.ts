@@ -55,6 +55,19 @@ const FRAMEWORKS: Record<SportFamily, Record<UserProfile['fitnessLevel'], string
   },
 };
 
+/**
+ * How full a session has to be, from its length.
+ *
+ * Generated days used to arrive with one or two movements, which is not a
+ * session; this makes the minimum explicit so the model cannot under-deliver.
+ */
+export const sessionShapeForMinutes = (minutes: number): { min: number; max: number; note: string } => {
+  if (minutes <= 30) return { min: 4, max: 6, note: 'short session: one main lift or effort, two accessories, brief warm-up and cool-down' };
+  if (minutes <= 45) return { min: 6, max: 8, note: 'standard session: warm-up, one or two main efforts, two or three accessories, cool-down' };
+  if (minutes <= 75) return { min: 7, max: 10, note: 'full session: thorough warm-up, two main efforts, three or four accessories, cool-down' };
+  return { min: 8, max: 12, note: 'long session: extended warm-up, two or three main efforts, accessory block, dedicated cool-down' };
+};
+
 /** Universal, level-driven guardrails that hold whatever the sport is. */
 const LEVEL_RULES: Record<UserProfile['fitnessLevel'], string> = {
   Beginner: `Level BEGINNER: 2 to 4 sessions a week, effort at RPE 5-7, never to failure. Compound movements with bodyweight or light load, full range, generous rest (90-120s). Every session names the technique cue that matters most. Add one deload or easy week every fourth week.`,
@@ -80,12 +93,27 @@ export const describeMethodologyForPrompt = (profile: UserProfile, language: Lan
   const families = sportFamilies(profile);
   const frameworks = methodologyNames(profile);
 
+  // Longest session the athlete scheduled sets the shape of a training day.
+  const longest = Math.max(30, ...(profile.sports || []).map(sp => Number(sp.durationMin) || 0));
+  const shape = sessionShapeForMinutes(longest);
+
   return `
 COACHING METHODOLOGY (build the week on established practice, not on generic advice):
 - Training families detected from the athlete's sports: ${families.join(', ')}.
 - ${LEVEL_RULES[level]}
 - Apply the PRINCIPLES of these recognised frameworks: ${frameworks.join('; ')}.
 - Name the principle you used in "workoutTip", in ${language === 'ru' ? 'Russian' : 'English'}, so the athlete understands why the day looks the way it does.
+
+SESSION ANATOMY (every training day, not just some):
+- Each training day carries ${shape.min} to ${shape.max} entries in "exercises". A day with one or two movements is not a session and is not acceptable.
+- Sessions are ${longest} minutes, so aim for the ${shape.note}.
+- Order the entries the way they are performed and tag each with "block":
+  "warmup" (mobility and activation, 1-2 entries), "main" (the session's purpose, the heaviest or fastest work),
+  "accessory" (supporting volume, single joint or unilateral work, weak-point work), "cooldown" (1 entry, easy movement or stretching).
+- Give every entry an "intensity": RPE for strength and mixed work, percentage of a training max where the framework uses one, target pace or heart-rate zone for endurance, "easy" for warm-ups and cool-downs.
+- Vary the movements across the week. Do not repeat the same exercise on consecutive training days, and do not fill a week with only the same three lifts. Rotate patterns: squat, hinge, horizontal push, vertical push, horizontal pull, vertical pull, single-leg, carry, core.
+- Name real, established exercises the way a coach writes them on a whiteboard, with the equipment implied.
+
 - Structure the week so hard days are followed by easy or rest days, and no two maximal sessions land back to back.
 - Progress load only through one variable at a time: volume, intensity or density, never all three in the same week.
 - Apply the principles in your own words and numbers. Do NOT reproduce any published program's tables, and do not claim the plan was written or endorsed by a named coach or brand.
