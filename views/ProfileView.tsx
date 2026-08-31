@@ -5,7 +5,7 @@ import {
     Loader2, Wand2, Target, Check, TrendingUp, RefreshCw, Trash2, Eye, EyeOff,
     User as UserIcon, ExternalLink, Plus, Trophy
 } from 'lucide-react';
-import { validateApiKey, generateWeeklyPlan, describeGeminiError, describeKeyCheck } from '../services/geminiService';
+import { validateApiKey, generateWeeklyPlan, describeGeminiError, describeKeyCheck, looksLikeStudioKey } from '../services/geminiService';
 import { getTranslation } from '../utils/translations';
 import { archiveFinishedWeek } from '../utils/planHistory';
 import { Stage, Reveal, StageStat } from '../components/Stage';
@@ -221,7 +221,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     return (
         <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
             {/* Header: the same lit stage the other tabs open with */}
-            <Stage>
+            <Stage variant="profile">
                 <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
                     <Reveal delay={100} className="max-w-xl">
                         <p className="eyebrow text-brand-300">Fit Genius</p>
@@ -354,6 +354,18 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                         )}
                     </div>
                 </div>
+
+                {/* Wrong credential type is visible without a round trip */}
+                {keyStatus !== 'invalid' && tempKey.trim().length > 8 && !looksLikeStudioKey(tempKey) && (
+                    <p className="mt-3 text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-start gap-1.5">
+                        <AlertTriangle size={14} className="shrink-0 mt-px" />
+                        <span>
+                            {isRu
+                                ? 'Похоже, это не ключ AI Studio: они начинаются с «AIza» и не содержат точек.'
+                                : 'This does not look like an AI Studio key: they start with "AIza" and contain no dots.'}
+                        </span>
+                    </p>
+                )}
 
                 {keyStatus === 'invalid' && keyProblem && (
                     <div className="mt-3 rounded-[var(--radius-control)] border border-red-200 dark:border-red-900/60

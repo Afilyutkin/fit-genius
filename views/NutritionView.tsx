@@ -336,6 +336,7 @@ const NutritionView: React.FC<NutritionViewProps> = ({
             )}
 
             <PlanHero
+                variant="nutrition"
                 eyebrow={t.aiNutritionist}
                 title={t.pageTitle}
                 subtitle={t.pageSubtitle}

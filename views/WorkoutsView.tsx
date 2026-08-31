@@ -1,16 +1,19 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
     CalendarDays, CheckCircle2, Info, Dumbbell, Repeat, Timer, Send, RefreshCw,
-    Zap, ChevronRight, Wand2, AlertTriangle
+    Zap, ChevronRight, Wand2, AlertTriangle, Flame
 } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import MarkdownContent from '../components/MarkdownContent';
 import DaySelector from '../components/DaySelector';
 import PlanHero from '../components/PlanHero';
 import AnimatedNumber from '../components/AnimatedNumber';
-import { UserProfile, Language, ExerciseDetail } from '../types';
+import { UserProfile, Language, ExerciseDetail, SessionBlock } from '../types';
 import { generateWeeklyPlan, askPlanQuestion, generateExerciseDetails, describeGeminiError } from '../services/geminiService';
 import { getTranslation } from '../utils/translations';
+
+/** Display order of the session blocks. */
+const SESSION_BLOCKS: SessionBlock[] = ['warmup', 'main', 'accessory', 'cooldown'];
 import { archiveFinishedWeek } from '../utils/planHistory';
 import { dayLabel, shortDayLabel } from '../utils/days';
 
@@ -108,6 +111,13 @@ const ExerciseCard: React.FC<{
                             <span className="chip surface-muted text-slate-600 dark:text-slate-300">
                                 <Timer size={12} className="text-aqua-500" />
                                 <span className="stat text-sm">{exercise.rest}</span>
+                            </span>
+                        )}
+                        {/* Prescribed effort: the number that makes a set coachable */}
+                        {exercise.intensity && (
+                            <span className="chip bg-brand-300/15 border-brand-500/30 text-brand-800 dark:text-brand-300">
+                                <Flame size={12} />
+                                {exercise.intensity}
                             </span>
                         )}
                     </div>
@@ -296,6 +306,7 @@ const WorkoutsView: React.FC<WorkoutsViewProps> = ({ userProfile, setUserProfile
             )}
 
             <PlanHero
+                variant="workouts"
                 eyebrow={t.aiTrainer}
                 title={t.pageTitle}
                 subtitle={t.pageSubtitle}
@@ -373,7 +384,9 @@ const WorkoutsView: React.FC<WorkoutsViewProps> = ({ userProfile, setUserProfile
                             <p className="eyebrow">{dayLabel(safeDayIndex, language)}</p>
                             <h2 className="font-display text-2xl sm:text-4xl font-semibold uppercase leading-none
                                            text-slate-900 dark:text-white mt-2">
-                                {currentDayPlan.workoutTitle || `${t.workout}: ${dayLabel(safeDayIndex, language)}`}
+                                {dayExerciseCount === 0
+                                    ? t.restDay
+                                    : (currentDayPlan.workoutTitle || `${t.workout}: ${dayLabel(safeDayIndex, language)}`)}
                             </h2>
                         </div>
                         {/* Session progress: the reason to come back tomorrow */}
@@ -396,18 +409,36 @@ const WorkoutsView: React.FC<WorkoutsViewProps> = ({ userProfile, setUserProfile
 
                     <div className="grid grid-cols-1 gap-4">
                         {currentDayPlan.exercises?.length ? (
-                            currentDayPlan.exercises.map((ex, idx) => (
-                                <ExerciseCard
-                                    key={`${safeDayIndex}-${idx}-${ex.name}`}
-                                    exercise={ex}
-                                    isCompleted={userProfile.completedExercises?.includes(`${safeDayIndex}-${idx}`) || false}
-                                    onToggle={() => onToggleExercise(safeDayIndex, idx)}
-                                    t={t}
-                                    isRu={isRu}
-                                    canLoadTips={!noApiKey}
-                                    onLoadTips={() => handleLoadExerciseTips(idx, safeDayIndex)}
-                                />
-                            ))
+                            // Grouped by block so the day reads as a session:
+                            // warm-up, main work, accessories, cool-down.
+                            SESSION_BLOCKS.flatMap(block => {
+                                const inBlock = (currentDayPlan.exercises || [])
+                                    .map((ex, idx) => ({ ex, idx }))
+                                    .filter(({ ex }) => (ex.block || 'main') === block);
+                                if (!inBlock.length) return [];
+
+                                return [
+                                    <div key={`head-${block}`} className="flex items-center gap-3 mt-2 first:mt-0">
+                                        <span className="eyebrow whitespace-nowrap">{t.blocks[block]}</span>
+                                        <span className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+                                        <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                                            {inBlock.length}
+                                        </span>
+                                    </div>,
+                                    ...inBlock.map(({ ex, idx }) => (
+                                        <ExerciseCard
+                                            key={`${safeDayIndex}-${idx}-${ex.name}`}
+                                            exercise={ex}
+                                            isCompleted={userProfile.completedExercises?.includes(`${safeDayIndex}-${idx}`) || false}
+                                            onToggle={() => onToggleExercise(safeDayIndex, idx)}
+                                            t={t}
+                                            isRu={isRu}
+                                            canLoadTips={!noApiKey}
+                                            onLoadTips={() => handleLoadExerciseTips(idx, safeDayIndex)}
+                                        />
+                                    )),
+                                ];
+                            })
                         ) : (
                             <div className="card p-10 flex flex-col items-center text-center gap-4">
                                 <div className="w-16 h-16 rounded-full bg-brand-300/20 text-brand-800 dark:text-brand-300 flex items-center justify-center">
