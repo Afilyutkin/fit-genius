@@ -19,11 +19,17 @@ export interface MealDetails {
   tip?: string;
 }
 
+/** Where an exercise sits in the session, so a day reads as a real workout. */
+export type SessionBlock = 'warmup' | 'main' | 'accessory' | 'cooldown';
+
 export interface ExerciseDetail {
   name: string;
   sets: number;
   reps: string;
   rest: string;
+  /** Prescribed effort, e.g. "RPE 7", "70% от 1ПМ", "темп 5:30/км". */
+  intensity?: string;
+  block?: SessionBlock;
   notes?: string;
 }
 
