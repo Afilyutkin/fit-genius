@@ -184,18 +184,17 @@ const App: React.FC = () => {
     return () => window.clearInterval(id);
   }, []);
 
-  // Seed weight history on first setup
+  // Start the weight history at the weight the athlete actually entered.
+  //
+  // This used to invent eight weekly points by picking a starting weight of
+  // "current + 3 + random" and interpolating down to today, so the chart showed
+  // a loss that never happened and the dashboard badge reported it as progress.
+  // Health data is not decoration: the chart now begins empty and fills only
+  // with weights the user records.
   useEffect(() => {
     if (!userProfile.isSetup || weightHistory.length > 0) return;
-    const startWeight = Math.round((userProfile.weight + 3 + Math.random() * 2) * 10) / 10;
-    const history: { date: string; weight: number }[] = [];
-    for (let i = 7; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i * 7);
-      const w = Math.round((startWeight - ((startWeight - userProfile.weight) * (7 - i) / 7)) * 10) / 10;
-      history.push({ date: d.toISOString().split('T')[0], weight: w });
-    }
-    setWeightHistory(history);
+    if (!Number.isFinite(userProfile.weight) || userProfile.weight <= 0) return;
+    setWeightHistory([{ date: todayKey(), weight: userProfile.weight }]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile.isSetup]);
 
