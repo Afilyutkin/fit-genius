@@ -322,7 +322,7 @@ const DashboardView: React.FC<DashboardProps> = ({
                 </div>
                 <span className={`chip border-transparent ${weightBadgeClass}`}>
                   <WeightIcon size={12} />
-                  {Math.abs(weightChange)} kg
+                  {Math.abs(weightChange)} {isRu ? 'кг' : 'kg'}
                 </span>
               </div>
 
@@ -376,7 +376,7 @@ const DashboardView: React.FC<DashboardProps> = ({
                           fontSize: 12,
                         }}
                         labelStyle={{ color: '#cbd5e1' }}
-                        formatter={(value: any) => [`${value} kg`, '']}
+                        formatter={(value: any) => [`${value} ${isRu ? 'кг' : 'kg'}`, '']}
                       />
                       <Area type="monotone" dataKey="weight" stroke="#f97316" strokeWidth={2} fill="url(#weightGrad)" />
                     </AreaChart>
