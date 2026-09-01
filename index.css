@@ -486,6 +486,43 @@ html, body {
           mask-image: linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%);
 }
 
+/* ============================================================
+   TOUCH AND SMALL SCREENS
+============================================================ */
+
+/* iOS Safari zooms the whole page when a focused field is under 16px, and the
+   user then has to pinch back out. Every control goes to 16px on phones. */
+@media (max-width: 640px) {
+  .input,
+  input, select, textarea {
+    font-size: 16px;
+  }
+}
+
+/* Fingers are not cursors: the small chips and icon buttons that are fine with
+   a mouse are below the 44px touch guideline. */
+@media (pointer: coarse) {
+  button.chip,
+  [role="button"].chip {
+    min-height: 44px;
+    padding-block: 0.625rem;
+  }
+
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost,
+  .btn-danger {
+    min-height: 44px;
+  }
+
+  /* Icon-only controls keep a 44px hit area without growing visually */
+  .tap-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 /* Respect users who ask for less motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
