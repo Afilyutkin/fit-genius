@@ -34,17 +34,17 @@ const PlanHero: React.FC<PlanHeroProps> = ({
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
         <Reveal delay={100} className="max-w-xl">
           <p className="eyebrow text-brand-300">{eyebrow}</p>
-          <h1 className="mt-3 font-display text-3xl sm:text-4xl lg:text-[3.25rem] font-semibold uppercase
+          <h1 className="mt-2 sm:mt-3 font-display text-2xl sm:text-4xl lg:text-[3.25rem] font-semibold uppercase
                          leading-[0.95] tracking-tight">
             {title}
           </h1>
-          <p className="text-slate-400 text-sm sm:text-base mt-4 leading-relaxed max-w-[52ch]">{subtitle}</p>
+          <p className="hidden sm:block text-slate-400 text-sm sm:text-base mt-4 leading-relaxed max-w-[52ch]">{subtitle}</p>
         </Reveal>
 
         <Reveal delay={300} from="left" className="shrink-0">
-          <div className="flex flex-col sm:flex-row lg:flex-col items-stretch gap-4 lg:items-end">
-            <div className="flex items-stretch gap-5 rounded-[var(--radius-card)] border border-white/10
-                            bg-white/[0.07] backdrop-blur-xl px-5 py-4">
+          <div className="flex flex-row lg:flex-col items-stretch gap-3 sm:gap-4 lg:items-end">
+            <div className="flex flex-1 lg:flex-none items-stretch gap-4 sm:gap-5 rounded-[var(--radius-card)]
+                            border border-white/10 bg-white/[0.07] backdrop-blur-xl px-4 sm:px-5 py-3 sm:py-4">
               {stats.map(({ icon, value, label }, i) => (
                 <React.Fragment key={label}>
                   {i > 0 && <div className="w-px bg-white/10" aria-hidden="true" />}
@@ -58,7 +58,7 @@ const PlanHero: React.FC<PlanHeroProps> = ({
               disabled={loading || disabled}
               whileHover={reduce || loading || disabled ? undefined : { scale: 1.02 }}
               whileTap={reduce || loading || disabled ? undefined : { scale: 0.98 }}
-              className="btn-primary px-6 py-3 justify-center"
+              className="btn-primary px-4 sm:px-6 py-3 justify-center shrink-0"
             >
               {loading ? <RefreshCw size={16} className="animate-spin" /> : <Wand2 size={16} />}
               {loading ? loadingLabel : actionLabel}

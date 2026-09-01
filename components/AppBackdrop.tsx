@@ -20,9 +20,33 @@ const CLIP_FOR_TAB: Record<Tab, string> = {
  * Readability is the constraint: everything above sits on a heavy scrim, and
  * in light mode the scrim turns near-white so dark body text still passes.
  */
+/**
+ * Phones and metered connections skip the clip entirely.
+ *
+ * Each clip is 0.6-0.9 MB of pure decoration; on a phone that is real data and
+ * real battery for something nobody looks at directly. The painted backdrop
+ * carries the same palette for free.
+ */
+const shouldSkipVideo = (): boolean => {
+  if (typeof window === 'undefined') return true;
+  const conn = (navigator as any).connection;
+  if (conn?.saveData) return true;
+  if (typeof conn?.effectiveType === 'string' && /2g/.test(conn.effectiveType)) return true;
+  return window.matchMedia('(max-width: 640px)').matches;
+};
+
 const AppBackdrop: React.FC<{ tab: Tab }> = ({ tab }) => {
   const reduce = useReducedMotion();
   const src = CLIP_FOR_TAB[tab];
+
+  // Re-evaluated on resize so rotating a tablet does not strand the decision.
+  const [skipVideo, setSkipVideo] = useState(shouldSkipVideo);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    const update = () => setSkipVideo(shouldSkipVideo());
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
 
   // Two layers: `front` shows the current clip, `back` holds the outgoing one.
   const [layers, setLayers] = useState<{ front: string; back: string | null }>({ front: src, back: null });
@@ -44,7 +68,7 @@ const AppBackdrop: React.FC<{ tab: Tab }> = ({ tab }) => {
     return () => window.clearTimeout(id);
   }, [frontReady, layers.back]);
 
-  if (reduce || failed) {
+  if (reduce || failed || skipVideo) {
     // No clip: a static wash keeps the palette without any motion at all.
     return (
       <div className="fixed inset-0 -z-10 bg-slate-50 dark:bg-slate-950" aria-hidden="true">

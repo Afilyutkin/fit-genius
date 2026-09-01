@@ -172,7 +172,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, language, se
           <button
             onClick={toggleLanguage}
             aria-label={isRu ? 'Переключить на английский' : 'Switch to Russian'}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-bold
+            className="tap-target px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-bold
                        text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           >
             {language === 'en' ? 'RU' : 'EN'}
@@ -181,7 +181,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, language, se
             onClick={toggleTheme}
             aria-label={isRu ? 'Переключить тему' : 'Toggle theme'}
             aria-pressed={theme === 'dark'}
-            className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            className="tap-target p-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           >
             {theme === 'light'
               ? <Moon size={18} className="text-slate-500" />

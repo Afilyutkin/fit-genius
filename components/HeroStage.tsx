@@ -65,7 +65,7 @@ const InfoCard: React.FC<{
 }> = ({ title, meta, icon: Icon, tone, onClick }) => (
   <button
     onClick={onClick}
-    className={`w-full xl:w-[260px] h-[130px] sm:h-[144px] rounded-[16px] sm:rounded-[20px] p-4 sm:p-5
+    className={`w-full xl:w-[260px] h-[128px] sm:h-[144px] rounded-[16px] sm:rounded-[20px] p-3.5 sm:p-5
                 flex flex-col justify-between text-left transition-all duration-300 group
                 ${tone === 'glass'
         ? 'bg-white/[0.07] backdrop-blur-xl border border-white/10 hover:bg-white/[0.12]'
@@ -123,7 +123,7 @@ const HeroStage: React.FC<HeroStageProps> = ({
           <button
             onClick={() => onNavigate(Tab.PROFILE)}
             aria-label={isRu ? 'Настройки профиля' : 'Profile settings'}
-            className="absolute left-1/2 -translate-x-1/2 w-9 h-9 sm:w-10 sm:h-10 rounded-full
+            className="tap-target absolute left-1/2 -translate-x-1/2 w-9 h-9 sm:w-10 sm:h-10 rounded-full
                        bg-black/25 backdrop-blur-md border border-white/10
                        flex items-center justify-center text-white/70 hover:text-white
                        hover:bg-black/40 transition-colors"
@@ -149,7 +149,7 @@ const HeroStage: React.FC<HeroStageProps> = ({
             <Reveal delay={300} from="scale" className="w-full">
               <div className="relative overflow-hidden flex items-center justify-center
                               rounded-[24px] sm:rounded-[32px] lg:rounded-[40px]
-                              w-full h-[300px] sm:h-[360px] lg:h-[400px]">
+                              w-full h-[240px] sm:h-[360px] lg:h-[400px]">
                 {/* Rotating halo, inset past the edges so no corner sweeps into view */}
                 <div
                   className="absolute inset-[-5%] animate-spin-bg opacity-90"
@@ -200,8 +200,8 @@ const HeroStage: React.FC<HeroStageProps> = ({
 
           {/* Right: four tiles */}
           <div className="flex flex-col gap-4 sm:gap-[20px] w-full xl:w-auto">
-            <div className="flex flex-col sm:flex-row xl:flex-col gap-4 sm:gap-[20px]">
-              <Reveal delay={500} from="left" className="flex-1 xl:flex-none">
+            <div className="grid grid-cols-2 xl:grid-cols-1 gap-3 sm:gap-4 xl:gap-[20px]">
+              <Reveal delay={500} from="left" className="min-w-0">
                 <InfoCard
                   title={isRu ? 'Тренировки' : 'Workouts'}
                   meta={isRu
@@ -212,7 +212,7 @@ const HeroStage: React.FC<HeroStageProps> = ({
                   onClick={() => onNavigate(Tab.WORKOUTS)}
                 />
               </Reveal>
-              <Reveal delay={650} from="left" className="flex-1 xl:flex-none">
+              <Reveal delay={650} from="left" className="min-w-0">
                 <InfoCard
                   title={isRu ? 'Питание' : 'Nutrition'}
                   meta={targetCalories
@@ -225,9 +225,9 @@ const HeroStage: React.FC<HeroStageProps> = ({
               </Reveal>
             </div>
 
-            <div className="flex flex-col sm:flex-row xl:flex-col gap-4 sm:gap-[20px]">
+            <div className="grid grid-cols-2 xl:grid-cols-1 gap-3 sm:gap-4 xl:gap-[20px]">
               {/* Expandable: hover on desktop, tap on touch */}
-              <Reveal delay={800} from="left" className="flex-1 xl:flex-none">
+              <Reveal delay={800} from="left" className="min-w-0">
                 <div
                   onMouseEnter={() => !reduce && setExpanded(true)}
                   onMouseLeave={() => !reduce && setExpanded(false)}
@@ -236,11 +236,11 @@ const HeroStage: React.FC<HeroStageProps> = ({
                   tabIndex={0}
                   aria-expanded={expanded}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(v => !v); } }}
-                  className={`w-full xl:w-[260px] rounded-[16px] sm:rounded-[20px] p-4 sm:p-5 cursor-pointer
+                  className={`w-full xl:w-[260px] rounded-[16px] sm:rounded-[20px] p-3.5 sm:p-5 cursor-pointer
                               flex flex-col justify-between transition-all duration-300 ease-in-out
                               ${expanded
                       ? 'bg-white text-slate-950 h-auto xl:h-[280px]'
-                      : 'bg-white/[0.07] backdrop-blur-xl border border-white/10 text-white h-[130px] sm:h-[144px]'}`}
+                      : 'bg-white/[0.07] backdrop-blur-xl border border-white/10 text-white h-[128px] sm:h-[144px]'}`}
                 >
                   <div>
                     <h3 className={`font-display text-base sm:text-lg font-semibold uppercase tracking-wide
@@ -264,7 +264,7 @@ const HeroStage: React.FC<HeroStageProps> = ({
                 </div>
               </Reveal>
 
-              <Reveal delay={950} from="left" className="flex-1 xl:flex-none">
+              <Reveal delay={950} from="left" className="min-w-0">
                 <InfoCard
                   title={isRu ? 'Прогресс' : 'Progress'}
                   meta={`${xp.toLocaleString(isRu ? 'ru-RU' : 'en-US')} XP · ${progressPercent}%`}

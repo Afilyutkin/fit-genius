@@ -35,7 +35,7 @@ const DaySelector: React.FC<DaySelectorProps> = ({ days, selected, onSelect, lab
               role="tab"
               aria-selected={isActive}
               onClick={() => onSelect(idx)}
-              className={`relative shrink-0 px-4 sm:px-5 py-2 rounded-full font-display text-sm font-semibold
+              className={`relative shrink-0 px-4 sm:px-5 py-2 min-h-11 rounded-full font-display text-sm font-semibold
                           uppercase tracking-wider transition-colors duration-200
                 ${isActive
                   ? 'text-slate-950'

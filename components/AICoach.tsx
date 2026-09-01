@@ -172,7 +172,7 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
           <button
             onClick={() => setIsOpen(false)}
             aria-label={isRu ? 'Закрыть чат' : 'Close chat'}
-            className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/25 text-white transition-colors"
+            className="tap-target w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/25 text-white transition-colors"
           >
             <X size={20} />
           </button>
@@ -278,7 +278,7 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
               onClick={handleSend}
               disabled={!input.trim() || busy}
               aria-label={isRu ? 'Отправить' : 'Send'}
-              className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors ${input.trim() && !busy
+              className={`tap-target w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors ${input.trim() && !busy
                 ? 'bg-brand-300 text-slate-950 hover:bg-brand-200'
                 : 'bg-slate-200 dark:bg-slate-700 text-slate-400'
                 }`}
