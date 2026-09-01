@@ -866,34 +866,73 @@ export const generateSupplementTips = async (
 };
 
 
+/**
+ * Coaching notes for one exercise.
+ *
+ * Takes the whole entry, not just the name: the user message used to be a bare
+ * JSON schema with the exercise mentioned only in the system instruction, so the
+ * model had nothing to anchor on in the turn it was actually answering and the
+ * advice often described a different movement. The name now leads the user
+ * message, the prescription comes with it, and the answer has to open with the
+ * exercise name so any mismatch is visible instead of silent.
+ */
 export const generateExerciseDetails = async (
-  exerciseName: string,
+  exercise: ExerciseDetail,
   userProfile: UserProfile,
   apiKey?: string,
   language: 'en' | 'ru' = 'en'
 ): Promise<Partial<ExerciseDetail>> => {
   const key = (apiKey || localStorage.getItem('zenith_gemini_key') || '').trim();
   const lang = language === 'ru' ? 'Russian' : 'English';
+  const name = (exercise?.name || '').trim();
 
-  const systemInstruction = `You are a Strength and Conditioning Coach AI. 
-  CRITICAL: User Profile:
+  const systemInstruction = `You are a Strength and Conditioning Coach AI.
+  Athlete profile:
   - Fitness Level: ${userProfile.fitnessLevel}
   - Medical/Injuries: ${userProfile.contraindications || "None"}
-  - Favorite Sports: ${sportNames(userProfile).join(", ")}
-  
-  Provide clear instructions and safety tips for "${exerciseName}". 
-  Adjust instructions based on their level and constraints.
-  Return ONLY raw JSON. Respond in ${lang}.`;
+  - Sports: ${sportNames(userProfile).join(", ") || "general fitness"}
 
-  const prompt = `{ "notes": "Clear step-by-step instructions and safety tips (Markdown)." }`;
+  Answer about the ONE exercise named in the user message and nothing else.
+  If you do not recognise the exercise, say so plainly instead of describing a
+  different movement. Return ONLY raw JSON. Respond in ${lang}.`;
+
+  const prescription = [
+    exercise?.sets ? `${exercise.sets} sets` : '',
+    exercise?.reps ? `${exercise.reps} reps` : '',
+    exercise?.rest ? `rest ${exercise.rest}` : '',
+    exercise?.intensity ? `intensity ${exercise.intensity}` : '',
+  ].filter(Boolean).join(', ');
+
+  const prompt = [
+    `Exercise: "${name}"`,
+    prescription ? `Prescribed today: ${prescription}` : '',
+    ``,
+    `Write coaching notes for THIS exercise, "${name}".`,
+    ``,
+    `Return JSON exactly in this shape:`,
+    `{`,
+    `  "exercise": "${name}",`,
+    `  "notes": "Markdown. Start with the heading '### ${name}', then setup, execution cues, the most common mistake, and a safety note tied to the athlete's constraints. Tie the advice to the prescribed sets and reps above."`,
+    `}`,
+  ].filter(Boolean).join('\n');
+
   try {
     const text = await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: prompt }] }], "application/json");
     const parsed = JSON.parse(repairJson(text));
-    // Normalize response keys, and coerce: the model sometimes answers with an
-    // array of steps or a nested object where the UI expects markdown text.
-    return {
-      notes: toMarkdown(parsed.notes ?? parsed.instructions ?? parsed.note ?? parsed.instruction ?? parsed.text)
-    };
+
+    // The echoed name is a cheap tripwire for an answer about something else.
+    const echoed = toText(parsed?.exercise);
+    if (name && echoed && echoed.toLowerCase() !== name.toLowerCase()) {
+      console.warn('[generateExerciseDetails] asked about', name, 'but the model answered about', echoed);
+    }
+
+    const notes = toMarkdown(parsed.notes ?? parsed.instructions ?? parsed.note ?? parsed.instruction ?? parsed.text);
+    // Guarantee the reader can see which exercise the notes belong to.
+    const titled = name && !notes.toLowerCase().includes(name.toLowerCase())
+      ? `### ${name}\n\n${notes}`
+      : notes;
+
+    return { notes: titled };
   } catch (e) {
     console.error('[generateExerciseDetails] error:', e);
     throw e;
