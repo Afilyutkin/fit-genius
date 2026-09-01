@@ -493,7 +493,7 @@ const WorkoutsView: React.FC<WorkoutsViewProps> = ({ userProfile, setUserProfile
                         onClick={handleAskQuestion}
                         disabled={askLoading || !question.trim() || !currentDayPlan || noApiKey}
                         aria-label={isRu ? 'Отправить вопрос' : 'Send question'}
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full
+                        className="tap-target absolute right-1.5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full
                                    bg-brand-300 text-slate-950 hover:bg-brand-200 disabled:opacity-40
                                    flex items-center justify-center transition-colors"
                     >

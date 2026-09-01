@@ -329,7 +329,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                             type="button"
                             onClick={() => setShowKey(v => !v)}
                             aria-label={showKey ? (isRu ? 'Скрыть ключ' : 'Hide key') : (isRu ? 'Показать ключ' : 'Show key')}
-                            className="absolute right-10 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                            className="tap-target absolute right-10 top-1/2 -translate-y-1/2 flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
                         >
                             {showKey ? <EyeOff size={17} /> : <Eye size={17} />}
                         </button>
@@ -355,8 +355,10 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                     </div>
                 </div>
 
-                {/* Wrong credential type is visible without a round trip */}
-                {keyStatus !== 'invalid' && tempKey.trim().length > 8 && !looksLikeStudioKey(tempKey) && (
+                {/* A shape hint before the key is checked, and only then: once
+                    Google has accepted the key, a guess about its format has no
+                    business arguing with the live answer. */}
+                {keyStatus === 'idle' && tempKey.trim().length > 8 && !looksLikeStudioKey(tempKey) && (
                     <p className="mt-3 text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-start gap-1.5">
                         <AlertTriangle size={14} className="shrink-0 mt-px" />
                         <span>
@@ -550,7 +552,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                                             />
                                             <button
                                                 onClick={() => removeSport(index)}
-                                                className="btn-danger p-2.5 shrink-0"
+                                                className="btn-danger tap-target p-2.5 shrink-0"
                                                 title={t.removeSport}
                                                 aria-label={`${t.removeSport}: ${sport.name || index + 1}`}
                                             >
