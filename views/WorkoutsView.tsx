@@ -254,7 +254,7 @@ const WorkoutsView: React.FC<WorkoutsViewProps> = ({ userProfile, setUserProfile
         const exercise = day?.exercises?.[exerciseIdx];
         if (!exercise) return;
 
-        const details = await generateExerciseDetails(exercise.name, userProfile, apiKey, language);
+        const details = await generateExerciseDetails(exercise, userProfile, apiKey, language);
 
         setUserProfile(prev => {
             if (!prev.weeklyPlan?.[dayIdx]) return prev;
