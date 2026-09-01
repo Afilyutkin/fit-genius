@@ -589,9 +589,18 @@ export interface KeyCheckResult {
  * (403 on localhost but fine in production), a project where the Generative
  * Language API was never enabled, and a key from a different Google product.
  */
-/** True when the string is shaped like a Google AI Studio key. */
-export const looksLikeStudioKey = (key: string): boolean =>
-  /^AIza[0-9A-Za-z_-]{30,}$/.test((key || '').trim());
+/**
+ * Rough shape check for a Google AI Studio key.
+ *
+ * Deliberately permissive: it exists to catch a credential from a different
+ * product (those carry a dot and another prefix), not to police length. Google
+ * has changed key lengths before, and a false accusation on a working key is
+ * worse than staying quiet.
+ */
+export const looksLikeStudioKey = (key: string): boolean => {
+  const k = (key || '').trim();
+  return k.startsWith('AIza') && !k.includes('.') && k.length >= 20;
+};
 
 export const validateApiKey = async (apiKey: string): Promise<KeyCheckResult> => {
   const key = apiKey?.trim();
