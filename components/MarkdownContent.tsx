@@ -48,11 +48,18 @@ const renderMarkdown = (content: string): string => {
             : match;
     });
 
-    // Headings, emphasis
+    // Headings, emphasis.
+    //
+    // Deeper levels come first: `^###` would otherwise match the first three
+    // hashes of `#### Подготовка`, fail on the fourth, and leave the whole line
+    // as literal text on screen. Models reach for h4 constantly.
+    // Everything lands on h3/h4 because this renders inside a card, where a
+    // real h1 would outrank the card's own title.
     text = text
-        .replace(/^###\s+(.+)$/gm, '<h3 class="text-base font-bold mt-4 mb-2">$1</h3>')
-        .replace(/^##\s+(.+)$/gm, '<h2 class="text-lg font-bold mt-5 mb-2">$1</h2>')
-        .replace(/^#\s+(.+)$/gm, '<h1 class="text-xl font-bold mt-5 mb-3">$1</h1>')
+        .replace(/^#{4,6}\s+(.+)$/gm, '<h4>$1</h4>')
+        .replace(/^###\s+(.+)$/gm, '<h4>$1</h4>')
+        .replace(/^##\s+(.+)$/gm, '<h3>$1</h3>')
+        .replace(/^#\s+(.+)$/gm, '<h3>$1</h3>')
         .replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold">$1</strong>')
         .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em class="italic opacity-90">$2</em>');
 
@@ -66,7 +73,7 @@ const renderMarkdown = (content: string): string => {
         if (!paragraph.length) return;
         const body = paragraph.join('<br/>');
         // Standalone block-level HTML (code blocks, headings) must not be wrapped in <p>.
-        out.push(/^\s*(?: CODE\d+ |<h[1-3])/.test(body)
+        out.push(/^\s*(?: CODE\d+ |<h[1-6])/.test(body)
             ? body
             : `<p class="mb-3 last:mb-0 leading-relaxed">${body}</p>`);
         paragraph = [];
