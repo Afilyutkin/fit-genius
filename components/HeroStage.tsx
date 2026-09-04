@@ -66,7 +66,7 @@ const InfoCard: React.FC<{
   <button
     onClick={onClick}
     className={`w-full xl:w-[260px] h-[128px] sm:h-[144px] rounded-[16px] sm:rounded-[20px] p-3.5 sm:p-5
-                flex flex-col justify-between text-left transition-all duration-300 group
+                flex flex-col justify-between text-left transition-[background-color,filter,transform] duration-300 group
                 ${tone === 'glass'
         ? 'bg-white/[0.07] backdrop-blur-xl border border-white/10 hover:bg-white/[0.12]'
         : 'bg-gradient-to-br from-brand-400/90 to-brand-600/80 hover:brightness-110 border border-brand-300/30'}`}
@@ -149,7 +149,7 @@ const HeroStage: React.FC<HeroStageProps> = ({
             <Reveal delay={300} from="scale" className="w-full">
               <div className="relative overflow-hidden flex items-center justify-center
                               rounded-[24px] sm:rounded-[32px] lg:rounded-[40px]
-                              w-full h-[240px] sm:h-[360px] lg:h-[400px]">
+                              w-full h-[190px] sm:h-[360px] lg:h-[400px]">
                 {/* Rotating halo, inset past the edges so no corner sweeps into view */}
                 <div
                   className="absolute inset-[-5%] animate-spin-bg opacity-90"
@@ -171,7 +171,7 @@ const HeroStage: React.FC<HeroStageProps> = ({
                     </p>
                   </Reveal>
                   <Reveal delay={800}>
-                    <div className="stat text-[72px] sm:text-[100px] lg:text-[132px] leading-[0.85] mt-3">
+                    <div className="stat text-[58px] sm:text-[100px] lg:text-[132px] leading-[0.85] mt-2 sm:mt-3">
                       <AnimatedNumber value={level} locale={isRu ? 'ru-RU' : 'en-US'} />
                     </div>
                   </Reveal>
@@ -194,7 +194,7 @@ const HeroStage: React.FC<HeroStageProps> = ({
                   : `${exercisesDone} ${exercisesDone === 1 ? 'exercise' : 'exercises'} completed`}
                 {planProgress > 0 && <span className="text-brand-300">{planProgress}%</span>}
               </span>
-              <RulerTicker />
+              <div className="hidden sm:block w-full"><RulerTicker /></div>
             </Reveal>
           </div>
 
@@ -237,7 +237,7 @@ const HeroStage: React.FC<HeroStageProps> = ({
                   aria-expanded={expanded}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(v => !v); } }}
                   className={`w-full xl:w-[260px] rounded-[16px] sm:rounded-[20px] p-3.5 sm:p-5 cursor-pointer
-                              flex flex-col justify-between transition-all duration-300 ease-in-out
+                              flex flex-col justify-between transition-[background-color,color,height] duration-300 ease-in-out
                               ${expanded
                       ? 'bg-white text-slate-950 h-auto xl:h-[280px]'
                       : 'bg-white/[0.07] backdrop-blur-xl border border-white/10 text-white h-[128px] sm:h-[144px]'}`}

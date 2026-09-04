@@ -103,7 +103,15 @@ export const Stage: React.FC<{
   );
 };
 
-/** Reveal on entry, shared easing and timing across every stage. */
+/**
+ * Reveal on entry, shared easing and timing across every stage.
+ *
+ * Animates on mount, not on `whileInView`. The stage is always the first thing
+ * on the page, so an intersection observer buys nothing, and when it failed to
+ * fire on a 375px viewport every stage headline, stat and primary button stayed
+ * at opacity 0: the phone showed an empty slab with no way to save or generate.
+ * Content must not depend on an animation firing.
+ */
 export const Reveal: React.FC<{
   children: React.ReactNode;
   delay?: number;
@@ -120,8 +128,7 @@ export const Reveal: React.FC<{
     <motion.div
       className={className}
       initial={reduce ? false : { opacity: 0, ...offset }}
-      whileInView={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-      viewport={{ once: true, amount: 0.1 }}
+      animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
       transition={{ duration: 0.8, delay: delay / 1000, ease: [0.16, 1, 0.3, 1] }}
     >
       {children}

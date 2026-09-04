@@ -129,7 +129,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, language, se
             </span>
           </button>
 
-          <div className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+          <div className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800
+                          transition-colors focus-within:ring-2 focus-within:ring-brand-500/40">
             <Globe size={20} className="text-slate-400 shrink-0" aria-hidden="true" />
             <label htmlFor="sidebar-language" className="sr-only">
               {isRu ? 'Язык интерфейса' : 'Interface language'}
@@ -138,10 +139,13 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, language, se
               id="sidebar-language"
               value={language}
               onChange={(e) => setLanguage(e.target.value as Language)}
-              className="flex-1 bg-transparent border-none outline-none text-slate-600 dark:text-slate-300 text-sm font-medium cursor-pointer"
+              className="flex-1 bg-transparent border-none outline-none text-slate-600 dark:text-slate-300
+                         text-sm font-medium cursor-pointer"
             >
-              <option value="en">English</option>
-              <option value="ru">Русский</option>
+              {/* Explicit colours: a transparent native select renders unreadable
+                  in Windows dark mode. */}
+              <option value="en" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">English</option>
+              <option value="ru" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">Русский</option>
             </select>
           </div>
 

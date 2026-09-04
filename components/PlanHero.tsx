@@ -41,10 +41,10 @@ const PlanHero: React.FC<PlanHeroProps> = ({
           <p className="hidden sm:block text-slate-400 text-sm sm:text-base mt-4 leading-relaxed max-w-[52ch]">{subtitle}</p>
         </Reveal>
 
-        <Reveal delay={300} from="left" className="shrink-0">
+        <Reveal delay={300} from="left" className="w-full lg:w-auto lg:shrink-0">
           <div className="flex flex-row lg:flex-col items-stretch gap-3 sm:gap-4 lg:items-end">
             <div className="flex flex-1 lg:flex-none items-stretch gap-4 sm:gap-5 rounded-[var(--radius-card)]
-                            border border-white/10 bg-white/[0.07] backdrop-blur-xl px-4 sm:px-5 py-3 sm:py-4">
+                            border border-white/10 bg-white/[0.07] backdrop-blur-xl px-4 sm:px-5 py-3 sm:py-4 min-w-0">
               {stats.map(({ icon, value, label }, i) => (
                 <React.Fragment key={label}>
                   {i > 0 && <div className="w-px bg-white/10" aria-hidden="true" />}

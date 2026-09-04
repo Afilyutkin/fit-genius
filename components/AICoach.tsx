@@ -143,11 +143,12 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
       <div
         role="dialog"
         aria-modal="true"
+        style={{ overscrollBehavior: 'contain' }}
         aria-label="Fit Genius Coach"
         aria-hidden={!isOpen}
         className={`fixed z-[60] flex flex-col bg-white dark:bg-slate-900
           border border-slate-200/70 dark:border-slate-800 shadow-2xl
-          transition-all duration-300 ease-out
+          transition-[transform,opacity] duration-300 ease-out
           inset-0 rounded-none
           lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[400px] lg:h-[620px] lg:rounded-[var(--radius-panel)]
           ${isOpen
@@ -198,6 +199,7 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
 
         {/* Messages */}
         <div
+          style={{ overscrollBehavior: 'contain' }}
           className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50 dark:bg-slate-950"
           aria-live="polite"
         >
@@ -259,14 +261,16 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
         <div className="p-3 bg-white dark:bg-slate-900 lg:rounded-b-[var(--radius-panel)]
                         border-t border-slate-200/70 dark:border-slate-800 shrink-0 pb-safe lg:pb-3">
           <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 rounded-full pl-4 pr-1.5 py-1.5
-                          focus-within:ring-2 focus-within:ring-brand-500/30 transition-all">
+                          focus-within:ring-2 focus-within:ring-brand-500/30 transition-shadow">
             <label htmlFor="coach-input" className="sr-only">
               {isRu ? 'Сообщение тренеру' : 'Message to the coach'}
             </label>
             <input
               id="coach-input"
               ref={inputRef}
+              name="coach-message"
               type="text"
+              autoComplete="off"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
