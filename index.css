@@ -424,15 +424,57 @@ html, body {
 }
 
 /* Markdown rendered from AI answers */
-.markdown-content ul { @apply list-disc pl-5 space-y-1 mb-3; }
-.markdown-content ol { @apply list-decimal pl-5 space-y-1 mb-3; }
+/* ============================================================
+   AI ANSWERS (coaching notes, recipes, chat)
+
+   These arrive as markdown and used to render as one undifferentiated
+   wall: every heading, paragraph and bullet at the same weight, so a
+   long answer was unreadable. Headings now read as section labels in
+   the display face, and each section gets air above it.
+============================================================ */
+.markdown-content { line-height: 1.6; }
+.markdown-content > *:first-child { margin-top: 0; }
+
+/* Section labels: the rule to their left groups the block visually */
+.markdown-content h3,
+.markdown-content h4 {
+  font-family: var(--font-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.2;
+  @apply text-slate-900 dark:text-white font-semibold mt-5 mb-2 pl-3
+         border-l-2 border-brand-400;
+}
+.markdown-content h3 { @apply text-[15px]; }
+.markdown-content h4 { @apply text-[13px]; }
+
+.markdown-content p { @apply mb-3 last:mb-0; }
+
+/* Volt markers instead of default discs, and room to breathe */
+.markdown-content ul { @apply pl-1 space-y-2 mb-4 list-none; }
+.markdown-content ol { @apply pl-5 space-y-2 mb-4 list-decimal; }
+.markdown-content ul > li { @apply relative pl-5; }
+.markdown-content ul > li::before {
+  content: "";
+  position: absolute;
+  left: 0.15rem;
+  top: 0.6em;
+  width: 0.3rem;
+  height: 0.3rem;
+  border-radius: 9999px;
+  @apply bg-brand-500;
+}
+.markdown-content li { @apply leading-relaxed; }
+.markdown-content ol::marker,
+.markdown-content li::marker { @apply text-slate-500; }
+
+/* A bolded lead-in ("Дыхание:") is the sub-label of its bullet */
+.markdown-content li > strong:first-child { @apply text-slate-900 dark:text-white; }
+
 .markdown-content a { @apply text-brand-800 underline underline-offset-2; }
 .markdown-content code:not(pre code) {
   @apply px-1.5 py-0.5 rounded-md bg-slate-100 text-[0.85em] font-mono;
 }
-.markdown-content h1,
-.markdown-content h2,
-.markdown-content h3 { letter-spacing: 0; }
 .dark .markdown-content a { @apply text-brand-300; }
 .dark .markdown-content code:not(pre code) { @apply bg-slate-800; }
 
