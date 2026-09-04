@@ -65,8 +65,10 @@ const NumberField: React.FC<{
             </label>
             <input
                 id={id}
+                name={id}
                 type="number"
                 inputMode="decimal"
+                autoComplete="off"
                 min={min}
                 max={max}
                 step={step}
@@ -234,10 +236,11 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                         </p>
                     </Reveal>
 
-                    <Reveal delay={300} from="left" className="shrink-0">
-                        <div className="flex flex-col sm:flex-row lg:flex-col items-stretch gap-4 lg:items-end">
-                            <div className="flex items-stretch gap-5 rounded-[var(--radius-card)] border border-white/10
-                                            bg-white/[0.07] backdrop-blur-xl px-5 py-4">
+                    <Reveal delay={300} from="left" className="w-full lg:w-auto lg:shrink-0">
+                        <div className="flex flex-row lg:flex-col items-stretch gap-3 sm:gap-4 lg:items-end">
+                            <div className="flex flex-1 lg:flex-none items-stretch gap-4 sm:gap-5 rounded-[var(--radius-card)]
+                                            border border-white/10 bg-white/[0.07] backdrop-blur-xl
+                                            px-4 sm:px-5 py-3 sm:py-4 min-w-0">
                                 <StageStat
                                     icon={Calendar}
                                     value={weeklyTotal}
@@ -254,7 +257,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                             <button
                                 onClick={handleSaveAndGenerate}
                                 disabled={isGenerating}
-                                className="btn-primary px-6 py-3 justify-center"
+                                className="btn-primary px-4 sm:px-6 py-3 justify-center shrink-0"
                             >
                                 {isGenerating ? <Loader2 size={17} className="animate-spin" />
                                     : userProfile.isSetup ? <Save size={17} /> : <Wand2 size={17} />}
@@ -403,7 +406,9 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                             <label htmlFor="profile-name" className="label">{t.name}</label>
                             <input
                                 id="profile-name"
+                                name="given-name"
                                 type="text"
+                                autoComplete="given-name"
                                 value={userProfile.name}
                                 onChange={(e) => handleChange('name', e.target.value)}
                                 placeholder={isRu ? 'Как к вам обращаться?' : 'What should we call you?'}
@@ -631,7 +636,9 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                                 <label htmlFor="comp-sport" className="label">{t.competitionSport}</label>
                                 <input
                                     id="comp-sport"
+                                    name="competition-sport"
                                     type="text"
+                                    autoComplete="off"
                                     list="comp-sport-options"
                                     value={competition.sport}
                                     onChange={(e) => updateCompetition({ sport: e.target.value })}
@@ -659,7 +666,9 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                                 <label htmlFor="comp-goal" className="label">{t.competitionGoal}</label>
                                 <input
                                     id="comp-goal"
+                                    name="competition-goal"
                                     type="text"
+                                    autoComplete="off"
                                     value={competition.goal}
                                     onChange={(e) => updateCompetition({ goal: e.target.value })}
                                     placeholder={isRu ? 'например, полумарафон за 1:45' : 'e.g. half marathon under 1:45'}
