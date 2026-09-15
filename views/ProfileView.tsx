@@ -6,10 +6,11 @@ import {
     User as UserIcon, ExternalLink, Plus, Trophy
 } from 'lucide-react';
 import { validateApiKey, generateWeeklyPlan, describeGeminiError, describeKeyCheck, looksLikeStudioKey } from '../services/geminiService';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { getTranslation } from '../utils/translations';
 import { archiveFinishedWeek } from '../utils/planHistory';
 import { Stage, Reveal, StageStat } from '../components/Stage';
-import { DEFAULT_SPORT, SPORT_LIMITS, totalWorkoutsPerWeek, totalMinutesPerWeek, sportNames } from '../utils/profile';
+import { DEFAULT_SPORT, SPORT_LIMITS, newSportId, totalWorkoutsPerWeek, totalMinutesPerWeek, sportNames } from '../utils/profile';
 import { DEFAULT_COMPETITION, PHASE_LABELS, phaseForWeeks, weeksUntil } from '../utils/competition';
 import { methodologyNames, describeLevelFocus } from '../utils/methodology';
 
@@ -94,9 +95,11 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     // Why the check failed, so the field can say more than "invalid key".
     const [keyProblem, setKeyProblem] = useState<{ message: string; detail?: string } | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [generateDone, setGenerateDone] = useState(false);
     const [generateError, setGenerateError] = useState<string | null>(null);
     const [showKey, setShowKey] = useState(false);
     const checkedRef = useRef(false);
+    const reduce = useReducedMotion();
 
     const t = getTranslation(language).profile;
     const tGoals = getTranslation(language).goals;
@@ -143,7 +146,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     };
 
     const addSport = () => {
-        setUserProfile(prev => ({ ...prev, sports: [...prev.sports, { ...DEFAULT_SPORT }] }));
+        setUserProfile(prev => ({ ...prev, sports: [...prev.sports, { ...DEFAULT_SPORT, id: newSportId() }] }));
     };
 
     const competition = userProfile.competition ?? DEFAULT_COMPETITION;
@@ -196,7 +199,11 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                 isSetup: true
             }));
             setWaterConsumed(0);
-            onPlanGenerated();
+            // A 20-60 second wait ending in an instant jump to another tab
+            // reads as a glitch. Hold the finished state for a beat so the
+            // action visibly completes before the screen changes.
+            setGenerateDone(true);
+            window.setTimeout(onPlanGenerated, reduce ? 0 : 450);
         } catch (e: any) {
             setGenerateError(describeGeminiError(e, language));
         } finally {
@@ -225,7 +232,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
             {/* Header: the same lit stage the other tabs open with */}
             <Stage variant="profile">
                 <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
-                    <Reveal delay={100} className="max-w-xl">
+                    <Reveal delay={0} className="max-w-xl">
                         <p className="eyebrow text-brand-300">Fit Genius</p>
                         <h1 className="mt-3 font-display text-3xl sm:text-4xl lg:text-[3.25rem] font-semibold
                                        uppercase leading-[0.95] tracking-tight">
@@ -236,7 +243,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                         </p>
                     </Reveal>
 
-                    <Reveal delay={300} from="left" className="w-full lg:w-auto lg:shrink-0">
+                    <Reveal delay={60} from="left" className="w-full lg:w-auto lg:shrink-0">
                         <div className="flex flex-row lg:flex-col items-stretch gap-3 sm:gap-4 lg:items-end">
                             <div className="flex flex-1 lg:flex-none items-stretch gap-4 sm:gap-5 rounded-[var(--radius-card)]
                                             border border-white/10 bg-white/[0.07] backdrop-blur-xl
@@ -259,9 +266,12 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                                 disabled={isGenerating}
                                 className="btn-primary px-4 sm:px-6 py-3 justify-center shrink-0"
                             >
-                                {isGenerating ? <Loader2 size={17} className="animate-spin" />
-                                    : userProfile.isSetup ? <Save size={17} /> : <Wand2 size={17} />}
-                                {isGenerating ? t.generating : (userProfile.isSetup ? t.save : t.generatePlan)}
+                                {generateDone ? <Check size={17} strokeWidth={3} />
+                                    : isGenerating ? <Loader2 size={17} className="animate-spin" />
+                                        : userProfile.isSetup ? <Save size={17} /> : <Wand2 size={17} />}
+                                {generateDone ? (isRu ? 'Готово' : 'Done')
+                                    : isGenerating ? t.generating
+                                        : (userProfile.isSetup ? t.save : t.generatePlan)}
                             </button>
                         </div>
                     </Reveal>
@@ -269,7 +279,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
             </Stage>
 
             {generateError && (
-                <div role="alert" className="flex items-start gap-3 rounded-2xl p-4
+                <div role="alert" className="animate-alert-in flex items-start gap-3 rounded-2xl p-4
                                 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60">
                     <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={18} />
                     <p className="text-sm font-medium text-red-700 dark:text-red-300 break-words">{generateError}</p>
@@ -301,8 +311,8 @@ const ProfileView: React.FC<ProfileViewProps> = ({
 
                 <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">
                     {isRu
-                        ? 'Для работы AI тренера нужен ключ Gemini API. Он хранится только в этом браузере.'
-                        : 'The AI coach needs a Gemini API key. It is stored only in this browser.'}
+                        ? 'Для работы AI наставника нужен ключ Gemini API. Он хранится только в этом браузере.'
+                        : 'The AI mentor needs a Gemini API key. It is stored only in this browser.'}
                     {' '}
                     <a href="https://ai.google.dev/" target="_blank" rel="noopener noreferrer"
                         className="text-brand-800 dark:text-brand-300 font-semibold underline underline-offset-2 inline-flex items-center gap-1">
@@ -373,7 +383,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                 )}
 
                 {keyStatus === 'invalid' && keyProblem && (
-                    <div className="mt-3 rounded-[var(--radius-control)] border border-red-200 dark:border-red-900/60
+                    <div className="animate-alert-in mt-3 rounded-[var(--radius-control)] border border-red-200 dark:border-red-900/60
                                     bg-red-50 dark:bg-red-950/40 p-3">
                         <p className="text-xs font-semibold text-red-700 dark:text-red-300 flex items-start gap-1.5">
                             <AlertTriangle size={14} className="shrink-0 mt-px" />
@@ -541,8 +551,17 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                             </div>
 
                             <div className="space-y-2">
+                                <AnimatePresence initial={false}>
                                 {userProfile.sports.map((sport, index) => (
-                                    <div key={index} className="surface-muted rounded-[var(--radius-control)] p-2.5 space-y-2">
+                                    <motion.div
+                                        key={sport.id ?? index}
+                                        layout={!reduce}
+                                        initial={reduce ? false : { opacity: 0, y: -8 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={reduce ? { opacity: 0 } : { opacity: 0, x: -12 }}
+                                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                                        className="surface-muted rounded-[var(--radius-control)] p-2.5 space-y-2"
+                                    >
                                         {/* Name on its own line: side by side there was no room for
                                             full labels, and both of them wrapped to two lines. */}
                                         <div className="flex items-center gap-2">
@@ -586,8 +605,9 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                                                 onCommit={(v) => updateSport(index, { durationMin: Math.round(v) })}
                                             />
                                         </div>
-                                    </div>
+                                    </motion.div>
                                 ))}
+                                </AnimatePresence>
                             </div>
 
                             {!userProfile.sports.length && (
@@ -630,8 +650,20 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                         </span>
                     </label>
 
+                    <AnimatePresence initial={false}>
                     {competition.enabled && (
-                        <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-4 animate-fade-in">
+                        <motion.div
+                            key="competition-fields"
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={reduce ? { duration: 0 } : {
+                                height: { duration: 0.24, ease: [0.16, 1, 0.3, 1] },
+                                opacity: { duration: 0.18 },
+                            }}
+                            className="overflow-hidden"
+                        >
+                        <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
                                 <label htmlFor="comp-sport" className="label">{t.competitionSport}</label>
                                 <input
@@ -687,7 +719,9 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                                 </p>
                             )}
                         </div>
+                        </motion.div>
                     )}
+                    </AnimatePresence>
                 </div>
 
                 {/* ── Medical ───────────────────────────────────── */}

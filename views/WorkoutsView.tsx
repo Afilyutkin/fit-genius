@@ -3,11 +3,12 @@ import {
     CalendarDays, CheckCircle2, Info, Dumbbell, Repeat, Timer, Send, RefreshCw,
     Zap, ChevronRight, Wand2, AlertTriangle, Flame
 } from 'lucide-react';
-import { motion, useReducedMotion } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import MarkdownContent from '../components/MarkdownContent';
 import DaySelector from '../components/DaySelector';
 import PlanHero from '../components/PlanHero';
 import AnimatedNumber from '../components/AnimatedNumber';
+import IntensityHint from '../components/IntensityHint';
 import { UserProfile, Language, ExerciseDetail, SessionBlock } from '../types';
 import { generateWeeklyPlan, askPlanQuestion, generateExerciseDetails, describeGeminiError } from '../services/geminiService';
 import { getTranslation } from '../utils/translations';
@@ -115,10 +116,7 @@ const ExerciseCard: React.FC<{
                         )}
                         {/* Prescribed effort: the number that makes a set coachable */}
                         {exercise.intensity && (
-                            <span className="chip bg-brand-300/15 border-brand-500/30 text-brand-800 dark:text-brand-300">
-                                <Flame size={12} />
-                                {exercise.intensity}
-                            </span>
+                            <IntensityHint intensity={exercise.intensity} language={isRu ? 'ru' : 'en'} />
                         )}
                     </div>
                 </div>
@@ -135,8 +133,20 @@ const ExerciseCard: React.FC<{
                 </button>
             </div>
 
+            <AnimatePresence initial={false}>
             {isExpanded && (
-                <div className="px-4 sm:px-5 pb-5 animate-fade-in">
+                <motion.div
+                    key="details"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={reduce ? { duration: 0 } : {
+                        height: { duration: 0.24, ease: [0.16, 1, 0.3, 1] },
+                        opacity: { duration: 0.18 },
+                    }}
+                    className="overflow-hidden"
+                >
+                <div className="px-4 sm:px-5 pb-5">
                     {loading ? (
                         <div className="surface-muted rounded-2xl p-5 space-y-2.5">
                             <p className="eyebrow mb-3">{t.coachWriting}</p>
@@ -168,7 +178,9 @@ const ExerciseCard: React.FC<{
                         </p>
                     )}
                 </div>
+                </motion.div>
             )}
+            </AnimatePresence>
         </article>
     );
 };
@@ -341,7 +353,7 @@ const WorkoutsView: React.FC<WorkoutsViewProps> = ({ userProfile, setUserProfile
                 )}
 
                 {generateError && !loading && (
-                    <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5 flex flex-col sm:flex-row items-start gap-4">
+                    <div className="animate-alert-in rounded-2xl border border-red-500/30 bg-red-500/10 p-5 flex flex-col sm:flex-row items-start gap-4">
                         <AlertTriangle size={22} className="text-red-400 shrink-0 mt-0.5" />
                         <div className="flex-1 min-w-0">
                             <h3 className="font-bold text-red-300 mb-1">{common.genError}</h3>
@@ -510,7 +522,7 @@ const WorkoutsView: React.FC<WorkoutsViewProps> = ({ userProfile, setUserProfile
                 )}
 
                 {answerError && (
-                    <div className="mt-5 flex items-start gap-2.5 rounded-2xl p-4 text-sm
+                    <div className="animate-alert-in mt-5 flex items-start gap-2.5 rounded-2xl p-4 text-sm
                                     bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300
                                     border border-red-200 dark:border-red-900/60">
                         <AlertTriangle size={16} className="shrink-0 mt-0.5" />

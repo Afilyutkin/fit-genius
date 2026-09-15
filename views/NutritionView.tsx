@@ -3,7 +3,7 @@ import {
     Utensils, Coffee, Sun, Moon, Info, ChefHat, Scale, Droplet, Apple, RotateCcw,
     Wand2, RefreshCw, Zap, Flame, ChevronRight, Send, AlertTriangle
 } from 'lucide-react';
-import { motion, useReducedMotion } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import MarkdownContent from '../components/MarkdownContent';
 import DaySelector from '../components/DaySelector';
 import PlanHero from '../components/PlanHero';
@@ -45,6 +45,7 @@ const MealCard: React.FC<{
     const [isExpanded, setIsExpanded] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const reduce = useReducedMotion();
 
     const hasDetails = isSupplement ? !!meal.recipe : !!(meal.ingredients?.length && meal.recipe);
     const detailsLabel = isSupplement ? (isRu ? 'Советы' : 'Get tips') : t.getRecipe;
@@ -111,8 +112,20 @@ const MealCard: React.FC<{
                 </button>
             </div>
 
+            <AnimatePresence initial={false}>
             {isExpanded && (
-                <div className="px-4 sm:px-5 pb-5 space-y-5 animate-fade-in">
+                <motion.div
+                    key="details"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={reduce ? { duration: 0 } : {
+                        height: { duration: 0.24, ease: [0.16, 1, 0.3, 1] },
+                        opacity: { duration: 0.18 },
+                    }}
+                    className="overflow-hidden"
+                >
+                <div className="px-4 sm:px-5 pb-5 space-y-5">
                     {loading ? (
                         <div className="surface-muted rounded-2xl p-5 space-y-2.5">
                             <p className="eyebrow mb-3">
@@ -186,7 +199,9 @@ const MealCard: React.FC<{
                         </p>
                     )}
                 </div>
+                </motion.div>
             )}
+            </AnimatePresence>
         </article>
     );
 };
@@ -363,7 +378,7 @@ const NutritionView: React.FC<NutritionViewProps> = ({
                 )}
 
                 {generateError && !loading && (
-                    <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5 flex items-start gap-4">
+                    <div className="animate-alert-in rounded-2xl border border-red-500/30 bg-red-500/10 p-5 flex items-start gap-4">
                         <AlertTriangle size={22} className="text-red-400 shrink-0 mt-0.5" />
                         <div className="flex-1 min-w-0">
                             <h3 className="font-bold text-red-300 mb-1">{common.genError}</h3>
@@ -553,7 +568,7 @@ const NutritionView: React.FC<NutritionViewProps> = ({
                     </div>
 
                     {answerError && (
-                        <div className="mt-5 flex items-start gap-2.5 rounded-2xl p-4 text-sm
+                        <div className="animate-alert-in mt-5 flex items-start gap-2.5 rounded-2xl p-4 text-sm
                                         bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300
                                         border border-red-200 dark:border-red-900/60">
                             <AlertTriangle size={16} className="shrink-0 mt-0.5" />
@@ -591,7 +606,7 @@ const NutritionView: React.FC<NutritionViewProps> = ({
                                 strokeDasharray="283"
                                 strokeDashoffset={283 - (283 * waterPercentage / 100)}
                                 strokeLinecap="round"
-                                className="transition-all duration-700 ease-out"
+                                className="transition-[stroke-dashoffset] duration-700 ease-out"
                             />
                             <defs>
                                 <linearGradient id="water-grad" x1="0%" y1="0%" x2="100%" y2="0%">

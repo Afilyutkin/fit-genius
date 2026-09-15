@@ -22,6 +22,8 @@ interface DashboardProps {
   setWaterConsumed: React.Dispatch<React.SetStateAction<number>>;
   onAwardXp: (amount: number) => void;
   onNavigate: (tab: Tab) => void;
+  levelUpPending: boolean;
+  onLevelUpShown: () => void;
 }
 
 const XP_PER_LEVEL = 500;
@@ -37,7 +39,7 @@ const initials = (name: string) =>
   name.trim().split(/\s+/).slice(0, 2).map(part => part[0] ?? '').join('').toUpperCase() || '?';
 
 const DashboardView: React.FC<DashboardProps> = ({
-  stats, userProfile, setUserProfile, language, weightHistory, waterConsumed, setWaterConsumed, onAwardXp, onNavigate
+  stats, userProfile, setUserProfile, language, weightHistory, waterConsumed, setWaterConsumed, onAwardXp, onNavigate, levelUpPending, onLevelUpShown
 }) => {
   const t = getTranslation(language).dashboard;
   const AT = getTranslation(language).achievements;
@@ -235,6 +237,8 @@ const DashboardView: React.FC<DashboardProps> = ({
         targetCalories={todayPlan?.totalCalories ?? null}
         recommendation={coachTip}
         onNavigate={onNavigate}
+        levelUpPending={levelUpPending}
+        onLevelUpShown={onLevelUpShown}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -410,35 +414,51 @@ const DashboardView: React.FC<DashboardProps> = ({
                 </div>
                 <div className="text-right">
                   <div className="stat text-3xl text-slate-900 dark:text-white">
-                    <AnimatedNumber value={Math.round(waterPercentage)} suffix="%" />
-                  </div>
-                  <div className="stat text-sm text-aqua-700 dark:text-aqua-400 mt-1">
-                    <AnimatedNumber value={waterConsumed} /> ml
+                    <AnimatedNumber value={waterConsumed} />
+                    <span className="text-base text-slate-500 dark:text-slate-400 ml-1">ml</span>
                   </div>
                 </div>
               </div>
 
-              <div className="meter my-6 h-3">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${waterPercentage}%` }}
-                  transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-                  className="meter-fill bg-aqua-500"
-                />
+              {/* A bar said "how far along"; a filling tank says "how much water
+                  is in you". The level rides on a transform, not a height, so
+                  the pour stays on the GPU. */}
+              <div className="my-6 flex items-center gap-5">
+                <div
+                  className="relative w-[86px] h-[132px] shrink-0 overflow-hidden
+                             rounded-[26px] border border-aqua-500/30 bg-aqua-500/10"
+                  role="img"
+                  aria-label={`${Math.round(waterPercentage)}%`}
+                >
+                  <motion.div
+                    className="absolute inset-x-0 bottom-0 h-full bg-aqua-500/75"
+                    initial={{ transform: 'translateY(100%)' }}
+                    animate={{ transform: `translateY(${100 - Math.min(100, waterPercentage)}%)` }}
+                    transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    <span className="water-wave" aria-hidden="true" />
+                    <span className="water-wave water-wave-slow" aria-hidden="true" />
+                  </motion.div>
+                  <span className="absolute inset-0 flex items-center justify-center
+                                   stat text-xl text-slate-900 dark:text-white drop-shadow">
+                    {Math.round(waterPercentage)}%
+                  </span>
+                </div>
+
+                <div className="flex-1 min-w-0 flex flex-col gap-3">
+                  {[250, 500].map(ml => (
+                    <button
+                      key={ml}
+                      onClick={() => handleAddWater(ml)}
+                      className="btn-secondary w-full py-3"
+                    >
+                      <Zap size={14} className="text-aqua-500" fill="currentColor" />
+                      +{ml} ml
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="flex gap-3">
-                {[250, 500].map(ml => (
-                  <button
-                    key={ml}
-                    onClick={() => handleAddWater(ml)}
-                    className="flex-1 btn-secondary py-3"
-                  >
-                    <Zap size={14} className="text-aqua-500" fill="currentColor" />
-                    +{ml} ml
-                  </button>
-                ))}
-              </div>
             </div>
 
             <div className="lg:col-span-5 grid grid-cols-2 gap-4">
@@ -488,7 +508,7 @@ const DashboardView: React.FC<DashboardProps> = ({
             </div>
 
             {watchError && (
-              <div className="mt-4 flex items-start gap-2.5 rounded-xl p-3.5 text-sm
+              <div className="animate-alert-in mt-4 flex items-start gap-2.5 rounded-xl p-3.5 text-sm
                               bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300
                               border border-red-200 dark:border-red-900/60">
                 <AlertTriangle size={16} className="shrink-0 mt-0.5" />
@@ -593,7 +613,7 @@ const DashboardView: React.FC<DashboardProps> = ({
                     <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">{quest.description}</p>
                     <div className="flex items-center gap-3">
                       <div className="meter flex-1 h-1.5">
-                        <div className="meter-fill transition-all" style={{ width: `${pct}%` }} />
+                        <div className="meter-fill transition-[width] duration-300 ease-out" style={{ width: `${pct}%` }} />
                       </div>
                       <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 tabular-nums shrink-0">
                         {quest.unlocked
