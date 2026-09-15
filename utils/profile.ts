@@ -5,7 +5,10 @@ export const SPORT_LIMITS = {
   durationMin: { min: 10, max: 240 },
 } as const;
 
-export const DEFAULT_SPORT: SportPreference = { name: '', timesPerWeek: 3, durationMin: 45 };
+/** Ids only need to be unique within one profile, not globally. */
+export const newSportId = (): string => `sport-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+
+export const DEFAULT_SPORT: Omit<SportPreference, 'id'> = { name: '', timesPerWeek: 3, durationMin: 45 };
 
 /** Total sessions a week across every sport. */
 export const totalWorkoutsPerWeek = (profile: Pick<UserProfile, 'sports'>): number =>
@@ -31,6 +34,7 @@ const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, Math.round(Number(value) || min)));
 
 export const normalizeSport = (raw: any): SportPreference => ({
+  id: typeof raw?.id === 'string' && raw.id ? raw.id : newSportId(),
   name: String(raw?.name ?? '').trim(),
   timesPerWeek: clamp(raw?.timesPerWeek, SPORT_LIMITS.timesPerWeek.min, SPORT_LIMITS.timesPerWeek.max),
   durationMin: clamp(raw?.durationMin, SPORT_LIMITS.durationMin.min, SPORT_LIMITS.durationMin.max),
@@ -60,6 +64,7 @@ export const normalizeSports = (raw: any): SportPreference[] => {
   const remainder = total % names.length;
 
   return names.map((name, i) => ({
+    id: newSportId(),
     name,
     // Every sport keeps at least one session, so nothing silently disappears.
     timesPerWeek: Math.max(1, base + (i < remainder ? 1 : 0)),

@@ -240,12 +240,6 @@ export const translations = {
       milestones: 'Milestones',
       nextReward: 'Next Reward'
     },
-    trends: {
-      title: 'Health Trends',
-      subtitle: 'Track your progress over time',
-      weightHistory: 'Weight History',
-      recoveryScore: 'Recovery Score'
-    },
     common: {
       translatePrompt: 'Interface language changed. Refresh your plan to translate AI content?',
       refresh: 'Refresh Plan',
@@ -493,12 +487,6 @@ export const translations = {
       score: 'Счет',
       milestones: 'Вехи',
       nextReward: 'След. награда'
-    },
-    trends: {
-      title: 'Тренды Здоровья',
-      subtitle: 'Отслеживайте прогресс во времени',
-      weightHistory: 'История Веса',
-      recoveryScore: 'Балл Восстановления'
     },
     common: {
       translatePrompt: 'Язык интерфейса изменился. Обновите план, чтобы перевести AI контент?',
