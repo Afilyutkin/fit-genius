@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion, useReducedMotion } from 'motion/react';
 import { LayoutDashboard, Dumbbell, Utensils, User, LogOut, Globe, Lock, Moon, Sun } from 'lucide-react';
 import { Tab, Language, Theme } from '../types';
 import { getTranslation } from '../utils/translations';
@@ -41,6 +42,7 @@ const Wordmark: React.FC<{ className?: string }> = ({ className = '' }) => (
 const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, language, setLanguage, theme, setTheme, isSetup, onSignOut }) => {
   const t = getTranslation(language).sidebar;
   const isRu = language === 'ru';
+  const reduce = useReducedMotion();
 
   const menuItems = [
     { id: Tab.DASHBOARD, label: t.dashboard, icon: LayoutDashboard },
@@ -66,7 +68,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, language, se
           <LogoTile size={38} glyph={21} className="mr-3" />
           <div className="flex flex-col leading-tight">
             <Wordmark className="text-lg leading-none" />
-            <span className="eyebrow text-[9px] mt-1.5 leading-none">AI Health Coach</span>
+            <span className="eyebrow text-[9px] mt-1.5 leading-none">AI Health Mentor</span>
           </div>
         </div>
 
@@ -93,8 +95,17 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, language, se
                       : 'text-slate-600 dark:text-slate-400 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
                   }`}
               >
+                {/* The rail slides between items instead of blinking out here and
+                    in again there: the eye follows where navigation went. Same
+                    shared-layout trick the day pills use, so the app moves in
+                    one language. */}
                 {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-7 bg-brand-400 rounded-r-full" aria-hidden="true" />
+                  <motion.span
+                    layoutId="nav-rail"
+                    transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 480, damping: 38 }}
+                    className="absolute left-0 inset-y-0 my-auto w-1 h-7 bg-brand-400 rounded-r-full"
+                    aria-hidden="true"
+                  />
                 )}
                 <span className="relative shrink-0">
                   <Icon size={20} className={isActive ? 'text-brand-800 dark:text-brand-300' : ''} />
@@ -225,7 +236,12 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, language, se
                 }`}
             >
               {isActive && (
-                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-10 h-[3px] bg-brand-400 rounded-b-full" aria-hidden="true" />
+                <motion.span
+                  layoutId="nav-tab"
+                  transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 480, damping: 38 }}
+                  className="absolute top-0 inset-x-0 mx-auto w-10 h-[3px] bg-brand-400 rounded-b-full"
+                  aria-hidden="true"
+                />
               )}
               <span className="relative">
                 <Icon size={22} strokeWidth={isActive ? 2.4 : 2} />

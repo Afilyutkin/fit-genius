@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, ArrowUp, ArrowDown, HelpCircle, Dumbbell, Utensils, Sparkles } from 'lucide-react';
-import { motion, useReducedMotion } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { Stage, Reveal, Avatar } from './Stage';
 import { Tab, UserProfile, Language } from '../types';
 import AnimatedNumber from './AnimatedNumber';
@@ -19,7 +19,13 @@ interface HeroStageProps {
   /** Real coaching line from today's plan; the expandable card shows it in full. */
   recommendation: string;
   onNavigate: (tab: Tab) => void;
+  /** Raised by App when a level is crossed, wherever that happened. */
+  levelUpPending?: boolean;
+  onLevelUpShown?: () => void;
 }
+
+/** Circumference of the level ring, r=48 in its own viewBox. */
+const RING = 2 * Math.PI * 48;
 
 /** 61 ticks, every 5th taller: a measuring rule for the progress readout. */
 const RulerTicker: React.FC = () => {
@@ -101,11 +107,24 @@ const InfoCard: React.FC<{
  */
 const HeroStage: React.FC<HeroStageProps> = ({
   userProfile, language, level, xp, xpIntoLevel, xpPerLevel,
-  exercisesDone, planProgress, targetCalories, recommendation, onNavigate,
+  exercisesDone, planProgress, targetCalories, recommendation, onNavigate, levelUpPending, onLevelUpShown,
 }) => {
   const isRu = language === 'ru';
   const [expanded, setExpanded] = useState(false);
   const reduce = useReducedMotion();
+
+  // Crossing a level is the one moment worth celebrating: it happens roughly
+  // every ten finished exercises, and until now the numeral just ticked over.
+  const [leveledUp, setLeveledUp] = useState(false);
+  useEffect(() => {
+    if (!levelUpPending) return;
+    setLeveledUp(true);
+    const id = window.setTimeout(() => {
+      setLeveledUp(false);
+      onLevelUpShown?.();
+    }, 900);
+    return () => window.clearTimeout(id);
+  }, [levelUpPending, onLevelUpShown]);
 
   const name = userProfile.name || (isRu ? 'Атлет' : 'Athlete');
   const firstName = name.trim().split(/\s+/)[0];
@@ -115,9 +134,9 @@ const HeroStage: React.FC<HeroStageProps> = ({
     <Stage variant="dashboard">
         {/* ── Top bar ───────────────────────────────────────────── */}
         <div className="flex items-start justify-between gap-4 relative">
-          <Reveal delay={100} from="down">
+          <Reveal delay={0} from="down">
             <p className="eyebrow text-brand-300">Fit Genius</p>
-            <p className="text-xs text-white/50 mt-1">{isRu ? 'AI тренер' : 'AI coach'}</p>
+            <p className="text-xs text-white/50 mt-1">{isRu ? 'AI наставник' : 'AI mentor'}</p>
           </Reveal>
 
           <button
@@ -131,7 +150,7 @@ const HeroStage: React.FC<HeroStageProps> = ({
             <HelpCircle size={18} strokeWidth={1.5} />
           </button>
 
-          <Reveal delay={200} from="down">
+          <Reveal delay={30} from="down">
             <div className="flex items-center gap-3">
               <span className="hidden md:block font-display text-xl sm:text-3xl lg:text-[42px] font-semibold
                                uppercase leading-none text-right">
@@ -146,45 +165,83 @@ const HeroStage: React.FC<HeroStageProps> = ({
         <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-8 mt-8 lg:mt-10">
           {/* Left: the headline readout */}
           <div className="flex flex-col items-center xl:items-start w-full sm:w-[420px] lg:w-[520px] shrink-0">
-            <Reveal delay={300} from="scale" className="w-full">
-              <div className="relative overflow-hidden flex items-center justify-center
+            <Reveal delay={60} from="scale" className="w-full">
+              <motion.div
+                animate={leveledUp && !reduce ? { scale: [1, 1.06, 1] } : { scale: 1 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 18 }}
+                className="relative overflow-hidden flex items-center justify-center
                               rounded-[24px] sm:rounded-[32px] lg:rounded-[40px]
                               w-full h-[190px] sm:h-[360px] lg:h-[400px]">
-                {/* Rotating halo, inset past the edges so no corner sweeps into view */}
-                <div
-                  className="absolute inset-[-5%] animate-spin-bg opacity-90"
-                  aria-hidden="true"
-                  style={{
-                    background:
-                      'conic-gradient(from 0deg, rgba(183,236,30,0.35), rgba(18,194,224,0.18), rgba(10,12,15,0.05), rgba(183,236,30,0.35))',
-                    filter: 'blur(28px)',
-                  }}
-                />
-                <div className="absolute inset-6 rounded-full bg-slate-950/55 backdrop-blur-md" aria-hidden="true" />
+                {/* Disc, ring and flash are one SVG. Positioning them as separate
+                    boxes meant a circular ring inside an elliptical disc, and a
+                    height-sized square overflowed the stage on narrow windows.
+                    A viewBox with the default "meet" fitting keeps the circle
+                    round and centred whatever shape the stage takes. */}
+                <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+                  {/* Rotating halo, inset past the edges so no corner sweeps into view */}
+                  <div
+                    className="absolute inset-[-5%] animate-spin-bg opacity-90"
+                    style={{
+                      background:
+                        'conic-gradient(from 0deg, rgba(183,236,30,0.35), rgba(18,194,224,0.18), rgba(10,12,15,0.05), rgba(183,236,30,0.35))',
+                      filter: 'blur(28px)',
+                    }}
+                  />
+
+                  <svg className="absolute inset-6 w-[calc(100%-3rem)] h-[calc(100%-3rem)]" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="48" fill="rgba(10,12,15,0.62)" />
+                    <circle
+                      cx="50" cy="50" r="48" fill="none"
+                      stroke="rgba(255,255,255,0.10)" strokeWidth="0.8"
+                    />
+                    {/* Progress to the next level used to be a line of small grey
+                        text under a 400px void; drawn around the numeral it reads
+                        at a glance. */}
+                    <motion.circle
+                      cx="50" cy="50" r="48" fill="none"
+                      stroke="#b7ec1e" strokeWidth="1.6" strokeLinecap="round"
+                      transform="rotate(-90 50 50)"
+                      strokeDasharray={RING}
+                      initial={{ strokeDashoffset: RING }}
+                      animate={{ strokeDashoffset: RING * (1 - Math.min(1, progressPercent / 100)) }}
+                      transition={reduce ? { duration: 0 } : { duration: 0.9, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
+                    />
+                    {/* Level-up flash: survives reduced motion, since it only
+                        changes width and opacity. */}
+                    <motion.circle
+                      cx="50" cy="50" r="48" fill="none" stroke="#b7ec1e"
+                      initial={false}
+                      animate={leveledUp
+                        ? { strokeWidth: [2, 11], strokeOpacity: [0.5, 0] }
+                        : { strokeWidth: 2, strokeOpacity: 0 }}
+                      transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+                    />
+                  </svg>
+                </div>
 
                 <div className="relative z-10 text-center px-6">
-                  <Reveal delay={600}>
+                  <Reveal delay={100}>
                     <p className="text-gray-200 text-base sm:text-lg md:text-[22px] font-medium leading-tight">
                       {isRu ? 'Текущий' : 'Your current'}
                       <br />
                       {isRu ? 'уровень' : 'level'}
                     </p>
                   </Reveal>
-                  <Reveal delay={800}>
+                  <Reveal delay={140}>
                     <div className="stat text-[58px] sm:text-[100px] lg:text-[132px] leading-[0.85] mt-2 sm:mt-3">
                       <AnimatedNumber value={level} locale={isRu ? 'ru-RU' : 'en-US'} />
                     </div>
                   </Reveal>
-                  <Reveal delay={900}>
+                  <Reveal delay={170}>
                     <p className="text-white/55 text-sm mt-4 tabular-nums">
                       {xpIntoLevel} / {xpPerLevel} XP {isRu ? 'до уровня' : 'to level'} {level + 1}
                     </p>
                   </Reveal>
                 </div>
-              </div>
+              </motion.div>
             </Reveal>
 
-            <Reveal delay={1000} className="w-full flex flex-col items-center xl:items-start">
+            <Reveal delay={200} className="w-full flex flex-col items-center xl:items-start">
               <span className="inline-flex items-center gap-2 mt-5 px-4 sm:px-6 py-2 rounded-full
                                border border-brand-300/50 bg-brand-300/20 text-white
                                text-xs sm:text-sm font-medium tracking-wide">
@@ -201,7 +258,7 @@ const HeroStage: React.FC<HeroStageProps> = ({
           {/* Right: four tiles */}
           <div className="flex flex-col gap-4 sm:gap-[20px] w-full xl:w-auto">
             <div className="grid grid-cols-2 xl:grid-cols-1 gap-3 sm:gap-4 xl:gap-[20px]">
-              <Reveal delay={500} from="left" className="min-w-0">
+              <Reveal delay={50} from="left" className="min-w-0">
                 <InfoCard
                   title={isRu ? 'Тренировки' : 'Workouts'}
                   meta={isRu
@@ -212,7 +269,7 @@ const HeroStage: React.FC<HeroStageProps> = ({
                   onClick={() => onNavigate(Tab.WORKOUTS)}
                 />
               </Reveal>
-              <Reveal delay={650} from="left" className="min-w-0">
+              <Reveal delay={90} from="left" className="min-w-0">
                 <InfoCard
                   title={isRu ? 'Питание' : 'Nutrition'}
                   meta={targetCalories
@@ -226,34 +283,55 @@ const HeroStage: React.FC<HeroStageProps> = ({
             </div>
 
             <div className="grid grid-cols-2 xl:grid-cols-1 gap-3 sm:gap-4 xl:gap-[20px]">
-              {/* Expandable: hover on desktop, tap on touch */}
-              <Reveal delay={800} from="left" className="min-w-0">
+              {/* Opens on click, not hover: the coach's note runs several
+                  sentences, and a card that grows when the pointer merely
+                  drifts across it moves the tiles under the cursor. The fixed
+                  280px it expanded to cut that note off mid-word. */}
+              <Reveal delay={130} from="left" className="min-w-0">
                 <div
-                  onMouseEnter={() => !reduce && setExpanded(true)}
-                  onMouseLeave={() => !reduce && setExpanded(false)}
                   onClick={() => setExpanded(v => !v)}
                   role="button"
                   tabIndex={0}
                   aria-expanded={expanded}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(v => !v); } }}
                   className={`w-full xl:w-[260px] rounded-[16px] sm:rounded-[20px] p-3.5 sm:p-5 cursor-pointer
-                              flex flex-col justify-between transition-[background-color,color,height] duration-300 ease-in-out
+                              flex flex-col justify-between transition-[background-color,color] duration-300
                               ${expanded
-                      ? 'bg-white text-slate-950 h-auto xl:h-[280px]'
+                      ? 'bg-white text-slate-950'
                       : 'bg-white/[0.07] backdrop-blur-xl border border-white/10 text-white h-[128px] sm:h-[144px]'}`}
                 >
                   <div>
                     <h3 className={`font-display text-base sm:text-lg font-semibold uppercase tracking-wide
                                     ${expanded ? 'text-slate-950' : 'text-white'}`}>
-                      {isRu ? 'Совет дня' : 'Today\'s tip'}
+                      {isRu ? 'Совет дня' : "Today's tip"}
                     </h3>
-                    {expanded ? (
-                      <p className="text-sm leading-relaxed mt-3 text-slate-700">{recommendation}</p>
-                    ) : (
-                      <p className="text-[11px] sm:text-[12px] text-white/55 mt-1">
-                        {isRu ? 'Рекомендация тренера' : 'Coach recommendation'}
-                      </p>
-                    )}
+                    <AnimatePresence initial={false} mode="wait">
+                      {expanded ? (
+                        <motion.p
+                          key="full"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={reduce ? { duration: 0 } : {
+                            height: { duration: 0.24, ease: [0.16, 1, 0.3, 1] },
+                            opacity: { duration: 0.18 },
+                          }}
+                          className="text-sm leading-relaxed mt-3 text-slate-700 overflow-hidden"
+                        >
+                          {recommendation}
+                        </motion.p>
+                      ) : (
+                        <motion.p
+                          key="hint"
+                          initial={false}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.12 }}
+                          className="text-[11px] sm:text-[12px] text-white/55 mt-1"
+                        >
+                          {isRu ? 'Рекомендация тренера' : 'Coach recommendation'}
+                        </motion.p>
+                      )}
+                    </AnimatePresence>
                   </div>
                   <div className="flex justify-end mt-3">
                     <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0
@@ -264,7 +342,7 @@ const HeroStage: React.FC<HeroStageProps> = ({
                 </div>
               </Reveal>
 
-              <Reveal delay={950} from="left" className="min-w-0">
+              <Reveal delay={170} from="left" className="min-w-0">
                 <InfoCard
                   title={isRu ? 'Прогресс' : 'Progress'}
                   meta={`${xp.toLocaleString(isRu ? 'ru-RU' : 'en-US')} XP · ${progressPercent}%`}

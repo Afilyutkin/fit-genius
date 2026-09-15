@@ -32,7 +32,7 @@ const PlanHero: React.FC<PlanHeroProps> = ({
   return (
     <Stage variant={variant}>
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
-        <Reveal delay={100} className="max-w-xl">
+        <Reveal delay={0} className="max-w-xl">
           <p className="eyebrow text-brand-300">{eyebrow}</p>
           <h1 className="mt-2 sm:mt-3 font-display text-2xl sm:text-4xl lg:text-[3.25rem] font-semibold uppercase
                          leading-[0.95] tracking-tight">
@@ -41,8 +41,8 @@ const PlanHero: React.FC<PlanHeroProps> = ({
           <p className="hidden sm:block text-slate-400 text-sm sm:text-base mt-4 leading-relaxed max-w-[52ch]">{subtitle}</p>
         </Reveal>
 
-        <Reveal delay={300} from="left" className="w-full lg:w-auto lg:shrink-0">
-          <div className="flex flex-row lg:flex-col items-stretch gap-3 sm:gap-4 lg:items-end">
+        <Reveal delay={60} from="left" className="w-full lg:w-auto lg:shrink-0">
+          <div className="flex flex-col sm:flex-row lg:flex-col items-stretch gap-3 sm:gap-4 lg:items-end">
             <div className="flex flex-1 lg:flex-none items-stretch gap-4 sm:gap-5 rounded-[var(--radius-card)]
                             border border-white/10 bg-white/[0.07] backdrop-blur-xl px-4 sm:px-5 py-3 sm:py-4 min-w-0">
               {stats.map(({ icon, value, label }, i) => (
@@ -67,7 +67,7 @@ const PlanHero: React.FC<PlanHeroProps> = ({
         </Reveal>
       </div>
 
-      {children && <Reveal delay={500} className="mt-8">{children}</Reveal>}
+      {children && <Reveal delay={120} className="mt-8">{children}</Reveal>}
     </Stage>
   );
 };

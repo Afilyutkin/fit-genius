@@ -111,6 +111,11 @@ export const Stage: React.FC<{
  * fire on a 375px viewport every stage headline, stat and primary button stayed
  * at opacity 0: the phone showed an empty slab with no way to save or generate.
  * Content must not depend on an animation firing.
+ *
+ * Timing is deliberately short. This used to run 0.8s per element on delays up
+ * to 1000ms, so the dashboard stage sat empty for the better part of two
+ * seconds on every visit — long enough to read as a broken panel rather than
+ * an entrance. The whole stage now lands inside ~0.6s.
  */
 export const Reveal: React.FC<{
   children: React.ReactNode;
@@ -121,7 +126,7 @@ export const Reveal: React.FC<{
   const reduce = useReducedMotion();
 
   const offset = {
-    up: { y: 40 }, down: { y: -40 }, left: { x: 40 }, right: { x: -40 }, scale: { scale: 0.9 },
+    up: { y: 14 }, down: { y: -14 }, left: { x: 14 }, right: { x: -14 }, scale: { scale: 0.96 },
   }[from];
 
   return (
@@ -129,7 +134,7 @@ export const Reveal: React.FC<{
       className={className}
       initial={reduce ? false : { opacity: 0, ...offset }}
       animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-      transition={{ duration: 0.8, delay: delay / 1000, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.38, delay: delay / 1000, ease: [0.16, 1, 0.3, 1] }}
     >
       {children}
     </motion.div>

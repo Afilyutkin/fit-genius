@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Send, Bot, Sparkles, AlertTriangle, RefreshCw } from 'lucide-react';
 import { ChatMessage, UserProfile, Language } from '../types';
-import { generateCoachResponse, refinePlanWithConsultation, describeGeminiError } from '../services/geminiService';
+import { generateCoachResponse, refinePlanWithConsultation, extractProfileChanges, describeGeminiError, ProfilePatch } from '../services/geminiService';
 import MarkdownContent from './MarkdownContent';
 import { totalWorkoutsPerWeek } from '../utils/profile';
 
@@ -12,9 +12,60 @@ interface AICoachProps {
   language: Language;
 }
 
+const INTRO_KEY = 'zenith_coach_intro_seen';
+
+/** 1 тренировка, 2 тренировки, 5 тренировок. */
+const pluralRu = (n: number, one: string, few: string, many: string) => {
+  const mod10 = n % 10, mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+};
+
+/** Human-readable lines for the fields a consultation rewrote. */
+const describePatch = (patch: ProfilePatch, isRu: boolean): string[] => {
+  const out: string[] = [];
+  if (patch.weight !== undefined) out.push(isRu ? `вес: ${patch.weight} кг` : `weight: ${patch.weight} kg`);
+  if (patch.contraindications !== undefined) out.push(isRu ? `ограничения: ${patch.contraindications}` : `limitations: ${patch.contraindications}`);
+  if (patch.dietaryPreferences !== undefined) out.push(isRu ? `питание: ${patch.dietaryPreferences}` : `diet: ${patch.dietaryPreferences}`);
+  if (patch.mealsPerDay !== undefined) out.push(isRu ? `приёмов пищи в день: ${patch.mealsPerDay}` : `meals per day: ${patch.mealsPerDay}`);
+  if (patch.fitnessGoals) out.push(isRu ? `цели: ${patch.fitnessGoals.join(', ')}` : `goals: ${patch.fitnessGoals.join(', ')}`);
+  if (patch.useSupplements !== undefined) {
+    out.push(isRu
+      ? (patch.useSupplements ? 'добавки: включены' : 'добавки: выключены')
+      : (patch.useSupplements ? 'supplements: on' : 'supplements: off'));
+  }
+  if (patch.activityLevel) out.push(isRu ? `активность: ${patch.activityLevel}` : `activity: ${patch.activityLevel}`);
+  if (patch.sports) {
+    const list = patch.sports.map(sp => `${sp.name} ${sp.timesPerWeek}×${sp.durationMin} ${isRu ? 'мин' : 'min'}`).join(', ');
+    out.push(isRu ? `виды спорта: ${list}` : `sports: ${list}`);
+  }
+  if (patch.competition) {
+    out.push(patch.competition.enabled
+      ? (isRu ? `соревнование: ${patch.competition.sport} ${patch.competition.date}` : `competition: ${patch.competition.sport} ${patch.competition.date}`)
+      : (isRu ? 'соревнование: снято' : 'competition: cleared'));
+  }
+  return out;
+};
+
 const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, language }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // The sparkles button carried no label, so first-time visitors had no idea
+  // what it opened. A callout introduces it once; opening the chat or closing
+  // the callout retires it for good.
+  const [showIntro, setShowIntro] = useState(false);
+  useEffect(() => {
+    let seen = false;
+    try { seen = localStorage.getItem(INTRO_KEY) === '1'; } catch { /* storage blocked */ }
+    if (seen) return;
+    const id = window.setTimeout(() => setShowIntro(true), 1400);
+    return () => window.clearTimeout(id);
+  }, []);
+  const dismissIntro = useCallback(() => {
+    setShowIntro(false);
+    try { localStorage.setItem(INTRO_KEY, '1'); } catch { /* storage blocked */ }
+  }, []);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -24,9 +75,24 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
   const isRu = language === 'ru';
   const name = userProfile.name || (isRu ? 'атлет' : 'athlete');
 
+  const perWeek = totalWorkoutsPerWeek(userProfile);
   const greeting = isRu
-    ? `Привет, ${name}! Я ваш тренер Fit Genius. Ваша цель: ${totalWorkoutsPerWeek(userProfile)} тренировок в неделю. Начнём?`
-    : `Hi ${name}! I'm your Fit Genius Coach. Your goal: ${totalWorkoutsPerWeek(userProfile)} workouts a week. Ready to start?`;
+    ? `Привет, ${name}! Я AI наставник Fit Genius по тренировкам и питанию: знаю ваш профиль и план на неделю (${perWeek} ${pluralRu(perWeek, 'тренировка', 'тренировки', 'тренировок')}).
+
+Чем помогу:
+- разобрать технику упражнения
+- заменить упражнение или блюдо
+- скорректировать нагрузку под самочувствие
+
+После разговора нажмите «Обновить», и план перестроится с учётом сказанного.`
+    : `Hi ${name}! I'm the Fit Genius AI mentor for training and nutrition: I know your profile and this week's plan (${perWeek} ${perWeek === 1 ? 'session' : 'sessions'}).
+
+What I can do:
+- walk through an exercise's technique
+- swap an exercise or a meal
+- adjust the load to how you feel
+
+After we talk, press "Update" and the plan rebuilds around it.`;
 
   // Keep the greeting in the current language until the conversation actually starts.
   useEffect(() => {
@@ -99,14 +165,27 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
     if (!canSync || isSyncing || isLoading) return;
     setIsSyncing(true);
     try {
-      const updatedPlan = await refinePlanWithConsultation(messages, userProfile, apiKey, language);
-      setUserProfile(prev => ({ ...prev, weeklyPlan: updatedPlan, planLanguage: language }));
+      // Two calls on purpose: the plan rewrite is a 7-day JSON and the model
+      // kept dropping the small profile object appended to it. The dedicated
+      // extraction is what actually lands in the profile; whatever the plan
+      // call returned is only a fallback.
+      const [{ plan, profile: inline }, extracted] = await Promise.all([
+        refinePlanWithConsultation(messages, userProfile, apiKey, language),
+        extractProfileChanges(messages, userProfile, apiKey, language),
+      ]);
+      const patch = { ...inline, ...extracted };
+      setUserProfile(prev => ({ ...prev, ...patch, weeklyPlan: plan, planLanguage: language }));
+      const changed = describePatch(patch, isRu);
       pushMessage({
         id: `sync-${Date.now()}`,
         role: 'model',
-        text: isRu
-          ? 'Готово. План обновлён по итогам нашей консультации.'
-          : 'Done. Your plan is updated from our consultation.',
+        text: changed.length
+          ? (isRu
+              ? `Готово. План обновлён, в профиль внесены изменения:\n${changed.map(c => `- ${c}`).join('\n')}`
+              : `Done. Plan updated, and the profile now reflects:\n${changed.map(c => `- ${c}`).join('\n')}`)
+          : (isRu
+              ? 'Готово. План обновлён по итогам нашей консультации. Профиль менять не потребовалось.'
+              : 'Done. Your plan is updated from our consultation. The profile needed no changes.'),
       });
     } catch (e: any) {
       pushMessage({
@@ -125,30 +204,82 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
   return (
     <>
       {/* Floating action button — sits above the mobile bottom nav */}
-      {!isOpen && (
-        <button
-          onClick={() => setIsOpen(true)}
-          aria-label={isRu ? 'Открыть AI тренера' : 'Open AI coach'}
-          className="fixed right-4 lg:bottom-6 lg:right-6 w-14 h-14 rounded-full z-40
-                     bg-brand-300 text-slate-950
-                     shadow-xl shadow-brand-500/40 flex items-center justify-center
-                     hover:scale-105 active:scale-95 transition-transform"
-          style={{ bottom: 'calc(4.5rem + max(0.375rem, env(safe-area-inset-bottom)))' }}
-        >
-          <Sparkles size={22} fill="currentColor" />
-        </button>
-      )}
+      {/* Kept mounted while open: it shrinks into the exact corner the panel
+          scales out of, so the two read as one object rather than a swap. */}
+      {/* Intro callout: grows out of the button's corner, the same origin the
+          panel uses, so all three read as one object. */}
+      <div
+        role="status"
+        aria-hidden={!showIntro}
+        className={`fixed right-4 lg:right-6 z-40 max-w-[calc(100vw-2rem)] w-[300px]
+                   origin-bottom-right transition-[transform,scale,opacity] duration-[240ms] ease-out
+                   ${showIntro && !isOpen
+                     ? 'scale-100 opacity-100'
+                     : 'scale-95 opacity-0 pointer-events-none'}`}
+        style={{ bottom: 'calc(4.5rem + 4.25rem + max(0.375rem, env(safe-area-inset-bottom)))' }}
+      >
+        <div className="relative rounded-[var(--radius-card)] p-4 pr-10
+                        bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800
+                        shadow-2xl shadow-black/20">
+          <div className="flex items-center gap-2 eyebrow text-brand-700 dark:text-brand-400 mb-1.5">
+            <Sparkles size={11} className="fill-current" />
+            {isRu ? 'AI наставник' : 'AI mentor'}
+          </div>
+          <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+            {isRu
+              ? `Привет, ${name}! Я отвечаю и за тренировки, и за питание: спросите про технику, замените упражнение или блюдо, подстройте план под самочувствие.`
+              : `Hi ${name}! I cover both training and nutrition: ask about technique, swap an exercise or a meal, adjust the plan to how you feel.`}
+          </p>
+          <button
+            onClick={() => { dismissIntro(); setIsOpen(true); }}
+            className="btn-primary mt-3 px-3.5 py-2 text-xs"
+          >
+            {isRu ? 'Открыть чат' : 'Open chat'}
+          </button>
+          <button
+            onClick={dismissIntro}
+            aria-label={isRu ? 'Скрыть подсказку' : 'Dismiss'}
+            className="tap-target absolute top-1 right-1 w-8 h-8 flex items-center justify-center rounded-full
+                       text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors"
+          >
+            <X size={15} />
+          </button>
+          {/* Tail pointing at the button */}
+          <span
+            aria-hidden="true"
+            className="absolute -bottom-1.5 right-6 w-3 h-3 rotate-45
+                       bg-white dark:bg-slate-900 border-r border-b border-slate-200/70 dark:border-slate-800"
+          />
+        </div>
+      </div>
+
+      <button
+        onClick={() => { dismissIntro(); setIsOpen(true); }}
+        aria-label={isRu ? 'Открыть AI наставника' : 'Open AI mentor'}
+        aria-hidden={isOpen}
+        tabIndex={isOpen ? -1 : 0}
+        className={`fixed right-4 lg:bottom-6 lg:right-6 w-14 h-14 rounded-full z-40
+                   bg-brand-300 text-slate-950 origin-bottom-right
+                   shadow-xl shadow-brand-500/40 flex items-center justify-center
+                   transition-[transform,translate,scale,opacity] duration-200 ease-out
+                   ${isOpen
+                     ? 'scale-90 opacity-0 pointer-events-none'
+                     : 'scale-100 opacity-100 hover:scale-105 active:scale-95'}`}
+        style={{ bottom: 'calc(4.5rem + max(0.375rem, env(safe-area-inset-bottom)))' }}
+      >
+        <Sparkles size={22} fill="currentColor" />
+      </button>
 
       {/* Chat panel */}
       <div
         role="dialog"
         aria-modal="true"
         style={{ overscrollBehavior: 'contain' }}
-        aria-label="Fit Genius Coach"
+        aria-label="Fit Genius AI"
         aria-hidden={!isOpen}
         className={`fixed z-[60] flex flex-col bg-white dark:bg-slate-900
           border border-slate-200/70 dark:border-slate-800 shadow-2xl
-          transition-[transform,opacity] duration-300 ease-out
+          transition-[transform,translate,scale,opacity] duration-300 ease-out
           inset-0 rounded-none
           lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[400px] lg:h-[620px] lg:rounded-[var(--radius-panel)]
           ${isOpen
@@ -164,9 +295,9 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
               <Bot size={18} className="text-slate-950" />
             </div>
             <div>
-              <h3 className="font-display text-base font-semibold uppercase text-white leading-tight">Fit Genius Coach</h3>
+              <h3 className="font-display text-base font-semibold uppercase text-white leading-tight">Fit Genius AI</h3>
               <p className="eyebrow text-[10px] text-brand-300 leading-tight mt-0.5">
-                {busy ? (isRu ? 'печатает' : 'typing') : (isRu ? 'AI тренер' : 'AI coach')}
+                {busy ? (isRu ? 'печатает' : 'typing') : (isRu ? 'Тренер и диетолог' : 'Coach and dietitian')}
               </p>
             </div>
           </div>
@@ -206,7 +337,7 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
           {messages.map((msg) => {
             if (msg.isError) {
               return (
-                <div key={msg.id} className="flex justify-start">
+                <div key={msg.id} className="flex justify-start animate-message-in">
                   <div className="max-w-[88%] rounded-2xl rounded-bl-md px-4 py-3 text-sm
                                   bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300
                                   border border-red-200 dark:border-red-900/60 flex gap-2.5">
@@ -219,7 +350,7 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
 
             const isUser = msg.role === 'user';
             return (
-              <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+              <div key={msg.id} className={`flex animate-message-in ${isUser ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[88%] px-4 py-3 text-sm shadow-sm ${isUser
                   ? 'bg-brand-300 text-slate-950 rounded-2xl rounded-br-md'
                   : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200/70 dark:border-slate-700 rounded-2xl rounded-bl-md'
@@ -230,7 +361,7 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
                     <>
                       <div className="flex items-center gap-1.5 mb-1.5 eyebrow text-brand-700 dark:text-brand-400">
                         <Sparkles size={10} className="fill-current" />
-                        {isRu ? 'Совет тренера' : 'Coach insight'}
+                        {isRu ? 'Совет наставника' : 'Mentor insight'}
                       </div>
                       <MarkdownContent content={msg.text.replace(/```json[\s\S]*?```/g, '').trim()} />
                     </>
@@ -241,7 +372,7 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
           })}
 
           {busy && (
-            <div className="flex justify-start">
+            <div className="flex justify-start animate-message-in">
               <div className="bg-white dark:bg-slate-800 px-4 py-3 rounded-2xl rounded-bl-md
                               border border-slate-200/70 dark:border-slate-700 shadow-sm flex items-center gap-1.5">
                 {[0, 150, 300].map(delay => (
@@ -274,7 +405,7 @@ const AICoach: React.FC<AICoachProps> = ({ userProfile, setUserProfile, apiKey, 
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
-              placeholder={isRu ? 'Спросите о тренировке…' : 'Ask about your workout…'}
+              placeholder={isRu ? 'Спросите о тренировке или питании…' : 'Ask about training or nutrition…'}
               className="flex-1 bg-transparent border-none outline-none text-sm h-9
                          text-slate-700 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500"
             />
