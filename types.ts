@@ -55,6 +55,8 @@ export interface DayPlan {
 
 /** One sport the user trains, with its own weekly rhythm. */
 export interface SportPreference {
+  /** Stable across reorder and removal, so list animations track the right row. */
+  id?: string;
   name: string;
   timesPerWeek: number;
   durationMin: number;

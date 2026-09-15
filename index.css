@@ -373,6 +373,57 @@
     to   { opacity: 1; transform: translateY(0); }
   }
 
+  /* Entrances that need no JS state. `@starting-style` gives the browser the
+     "before" frame, so the element transitions on its very first paint instead
+     of blinking into place. Same expo-out curve as everything else here. */
+
+  /* Chat bubbles: they arrive one at a time, so they get the shortest beat
+     that still bridges the jump. */
+  .animate-message-in {
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 180ms cubic-bezier(0.16, 1, 0.3, 1),
+                transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @starting-style {
+    .animate-message-in { opacity: 0; transform: translateY(6px); }
+  }
+
+  /* Water surface: a big rounded blob rotating just above the waterline. Only
+     `transform` moves, so it stays on the GPU while the level itself animates. */
+  .water-wave {
+    position: absolute;
+    left: -50%;
+    top: -18px;
+    width: 200%;
+    aspect-ratio: 1;
+    border-radius: 44%;
+    background: inherit;
+    animation: water-turn 9s linear infinite;
+  }
+  .water-wave-slow {
+    top: -13px;
+    border-radius: 47%;
+    opacity: 0.65;
+    animation-duration: 14s;
+    animation-direction: reverse;
+  }
+  @keyframes water-turn {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Alerts drop in from just above: the direction says "this was added to the
+     page", and 160ms keeps it fast enough not to delay reading the error. */
+  .animate-alert-in {
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1),
+                transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @starting-style {
+    .animate-alert-in { opacity: 0; transform: translateY(-4px); }
+  }
+
   /* Safe-area helpers for iPhone notch / home indicator */
   .pb-safe {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));

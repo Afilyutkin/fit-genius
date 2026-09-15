@@ -218,10 +218,20 @@ const App: React.FC = () => {
   }, []);
 
   /** Shared XP grant — keeps XP and level consistent across every screen. */
+  /**
+   * Set when the athlete crosses a level, cleared once the dashboard has shown
+   * it. Levels are earned on the Workouts tab, so without this the one moment
+   * worth celebrating would be over before its animation is on screen.
+   */
+  const [levelUpPending, setLevelUpPending] = useState(false);
+  const clearLevelUp = useCallback(() => setLevelUpPending(false), []);
+
   const awardXp = useCallback((amount: number) => {
     setUserProfile(prev => {
       const xp = Math.max(0, prev.xp + amount);
-      return { ...prev, xp, level: levelForXp(xp) };
+      const level = levelForXp(xp);
+      if (level > prev.level) setLevelUpPending(true);
+      return { ...prev, xp, level };
     });
   }, []);
 
@@ -242,7 +252,9 @@ const App: React.FC = () => {
         xp = Math.max(0, xp - 50);
       }
 
-      return { ...prev, completedExercises: completed, xp, level: levelForXp(xp) };
+      const level = levelForXp(xp);
+      if (level > prev.level) setLevelUpPending(true);
+      return { ...prev, completedExercises: completed, xp, level };
     });
   }, []);
 
@@ -321,10 +333,12 @@ const App: React.FC = () => {
             setWaterConsumed={setWaterConsumed}
             onAwardXp={awardXp}
             onNavigate={setActiveTab}
+            levelUpPending={levelUpPending}
+            onLevelUpShown={clearLevelUp}
           />
         );
     }
-  }, [activeTab, userProfile, apiKey, language, waterConsumed, weightHistory, awardXp, setApiKey, toggleExercise, handlePlanGenerated]);
+  }, [activeTab, userProfile, apiKey, language, waterConsumed, weightHistory, awardXp, setApiKey, toggleExercise, handlePlanGenerated, levelUpPending, clearLevelUp]);
 
   return (
     <div className="min-h-screen">
