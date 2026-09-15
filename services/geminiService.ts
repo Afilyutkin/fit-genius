@@ -1,5 +1,5 @@
 import { UserProfile, ChatMessage, DayPlan, MealDetails, PlannedMeal, ExerciseDetail, SessionBlock } from "../types";
-import { describeSports, sportNames, totalWorkoutsPerWeek } from "../utils/profile";
+import { describeSports, sportNames, totalWorkoutsPerWeek, normalizeSports } from "../utils/profile";
 import { DAY_NAMES } from "../utils/days";
 import { summarizeHistoryForPrompt } from "../utils/planHistory";
 import { describeCompetitionForPrompt } from "../utils/competition";
@@ -953,21 +953,144 @@ export const askPlanQuestion = async (
   return await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: question }] }]);
 };
 
+/** Fields a consultation is allowed to rewrite in the profile. */
+export type ProfilePatch = Partial<Pick<UserProfile,
+  'weight' | 'contraindications' | 'dietaryPreferences' | 'mealsPerDay' |
+  'fitnessGoals' | 'useSupplements' | 'activityLevel' | 'sports' | 'competition'>>;
+
+export interface ConsultationResult {
+  plan: DayPlan[];
+  /** Only the fields the chat actually changed; empty when nothing did. */
+  profile: ProfilePatch;
+}
+
+const ACTIVITY_LEVELS: UserProfile['activityLevel'][] = ['Sedentary', 'Moderate', 'Active', 'Extra Active'];
+
+/**
+ * Keep only whitelisted, well-typed fields from whatever the model returned.
+ * A consultation that mentions a sore knee may legitimately rewrite
+ * contraindications; it must never be able to rename the user or reset XP.
+ */
+export const normalizeProfilePatch = (raw: any, current: UserProfile): ProfilePatch => {
+  if (!raw || typeof raw !== 'object') return {};
+  const patch: ProfilePatch = {};
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+
+  if (typeof raw.weight === 'number' && raw.weight >= 30 && raw.weight <= 300 && raw.weight !== current.weight) {
+    patch.weight = Math.round(raw.weight * 10) / 10;
+  }
+  if (typeof raw.contraindications === 'string' && str(raw.contraindications) !== current.contraindications) {
+    patch.contraindications = str(raw.contraindications);
+  }
+  if (typeof raw.dietaryPreferences === 'string' && str(raw.dietaryPreferences) !== current.dietaryPreferences) {
+    patch.dietaryPreferences = str(raw.dietaryPreferences);
+  }
+  if (typeof raw.mealsPerDay === 'number') {
+    const n = Math.round(raw.mealsPerDay);
+    if (n >= 1 && n <= 8 && n !== current.mealsPerDay) patch.mealsPerDay = n;
+  }
+  if (Array.isArray(raw.fitnessGoals)) {
+    const goals = raw.fitnessGoals.map(str).filter(Boolean).slice(0, 5);
+    if (goals.length && goals.join('|') !== current.fitnessGoals.join('|')) patch.fitnessGoals = goals;
+  }
+  if (typeof raw.useSupplements === 'boolean' && raw.useSupplements !== current.useSupplements) {
+    patch.useSupplements = raw.useSupplements;
+  }
+  if (ACTIVITY_LEVELS.includes(raw.activityLevel) && raw.activityLevel !== current.activityLevel) {
+    patch.activityLevel = raw.activityLevel;
+  }
+  if (Array.isArray(raw.sports)) {
+    const sports = normalizeSports({ sports: raw.sports });
+    const key = (list: UserProfile['sports']) => list.map(sp => `${sp.name}:${sp.timesPerWeek}:${sp.durationMin}`).join('|');
+    if (sports.length && key(sports) !== key(current.sports)) patch.sports = sports;
+  }
+  if (raw.competition && typeof raw.competition === 'object') {
+    const c = raw.competition;
+    const next = {
+      enabled: typeof c.enabled === 'boolean' ? c.enabled : !!current.competition?.enabled,
+      sport: str(c.sport) || current.competition?.sport || '',
+      date: /^\d{4}-\d{2}-\d{2}$/.test(str(c.date)) ? str(c.date) : current.competition?.date || '',
+      goal: str(c.goal) || current.competition?.goal || '',
+    };
+    if (JSON.stringify(next) !== JSON.stringify(current.competition ?? null)) patch.competition = next;
+  }
+  return patch;
+};
+
+/**
+ * Pull lasting facts about the user out of the chat, as a separate small call.
+ * Asking for them as a trailing object on the 7-day plan JSON did not work:
+ * the model rebuilt the week and dropped the profile every time.
+ */
+export const extractProfileChanges = async (
+  chatHistory: ChatMessage[],
+  userProfile: UserProfile,
+  apiKey?: string,
+  language: 'en' | 'ru' = 'en'
+): Promise<ProfilePatch> => {
+  const key = (apiKey || localStorage.getItem('zenith_gemini_key') || '').trim();
+  const lang = language === 'ru' ? 'Russian' : 'English';
+  const userTurns = chatHistory.filter(m => m.role === 'user' && !m.isError).map(m => m.text);
+  if (!userTurns.length) return {};
+
+  const current = {
+    weight: userProfile.weight,
+    contraindications: userProfile.contraindications,
+    dietaryPreferences: userProfile.dietaryPreferences,
+    mealsPerDay: userProfile.mealsPerDay,
+    fitnessGoals: userProfile.fitnessGoals,
+    useSupplements: userProfile.useSupplements,
+    activityLevel: userProfile.activityLevel,
+    sports: userProfile.sports.map(({ name, timesPerWeek, durationMin }) => ({ name, timesPerWeek, durationMin })),
+    competition: userProfile.competition ?? null,
+  };
+
+  const systemInstruction = `You maintain a fitness and nutrition profile. Read what the user said in a consultation and decide which profile fields must change so that FUTURE plans remember it.
+
+  CURRENT PROFILE (JSON): ${JSON.stringify(current)}
+
+  RULES:
+  - Return a JSON object with ONLY the fields that must change. Return {} if nothing lasting was said.
+  - Allowed keys: weight (number, kg), contraindications (string), dietaryPreferences (string), mealsPerDay (integer 1-8),
+    fitnessGoals (array of up to 5 strings), useSupplements (boolean),
+    activityLevel ("Sedentary"|"Moderate"|"Active"|"Extra Active"),
+    sports (array of {name, timesPerWeek, durationMin} - the FULL list), competition ({enabled, sport, date "yyyy-mm-dd", goal}).
+  - dietaryPreferences and contraindications are free text. Return the MERGED text: keep what is there and add the new fact in ${lang}.
+    Anything about food the user does not eat, dislikes, is allergic to, wants more or less of, a diet style, or meal timing belongs in dietaryPreferences.
+    Anything about pain, injury, illness, or movements to avoid belongs in contraindications.
+  - A one-off request ("skip today's run") is NOT a lasting fact. A preference or a limitation is.
+  - Respond ONLY with the raw JSON object.`;
+
+  const prompt = `USER SAID (in order):\n${userTurns.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n\nReturn the profile changes as JSON.`;
+
+  try {
+    const text = await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: prompt }] }], "application/json");
+    const parsed = JSON.parse(repairJson(text));
+    const patch = normalizeProfilePatch(parsed, userProfile);
+    console.info('[extractProfileChanges] raw:', parsed, 'applied:', patch);
+    return patch;
+  } catch (e: any) {
+    console.error('[extractProfileChanges] error:', e);
+    return {};
+  }
+};
+
 export const refinePlanWithConsultation = async (
   chatHistory: ChatMessage[],
   userProfile: UserProfile,
   apiKey?: string,
   language: 'en' | 'ru' = 'en'
-): Promise<DayPlan[]> => {
+): Promise<ConsultationResult> => {
   const key = (apiKey || localStorage.getItem('zenith_gemini_key') || '').trim();
   const lang = language === 'ru' ? 'Russian' : 'English';
   const currentPlanStr = JSON.stringify(userProfile.weeklyPlan);
+  const { weeklyPlan: _plan, completedExercises: _done, ...profileForPrompt } = userProfile;
 
-  const systemInstruction = `You are Fit Genius AI. 
-  The user has been consulting with a trainer/dietitian. Your task is to update their existing 7-day Health Plan based on these consultations.
-  
+  const systemInstruction = `You are Fit Genius AI.
+  The user has been consulting with a trainer/dietitian. Your task is to update their existing 7-day Health Plan AND their profile based on these consultations.
+
   CONTEXT:
-  - User Profile: ${userProfile.name}, Level: ${userProfile.fitnessLevel}, Goals: ${userProfile.fitnessGoals.join(", ")}.
+  - User Profile (JSON): ${JSON.stringify(profileForPrompt)}
   - Current Plan: ${currentPlanStr}
   - CONSULTATION LOG (Chat): ${JSON.stringify(chatHistory)}
 
@@ -976,16 +1099,29 @@ export const refinePlanWithConsultation = async (
   2. If the user asked for "more cardio", update the workoutTitle/exercises accordingly.
   3. If they discussed "less carbs for dinner", update the matching entry in meals.items accordingly.
   3b. Keep the same number of entries in meals.items as the current plan has, each with its "slot" label.
-  4. Ensure the output is a VALID 7-day plan (Monday-Sunday) even if only some days change.
+  4. Ensure "plan" is a VALID 7-day plan (Monday-Sunday) even if only some days change.
   5. Provide both "workoutTip" and "nutritionTip" for modified days.
-  6. Respond ONLY with raw JSON array of 7 DayPlan objects. Respond in ${lang}.`;
+  6. PROFILE: if the chat revealed a lasting fact about the user, write it into "profile" so future plans remember it.
+     Allowed keys, all optional, include ONLY what changed:
+     weight (number, kg), contraindications (string: injuries, pain, illnesses, allergies),
+     dietaryPreferences (string), mealsPerDay (integer 1-8), fitnessGoals (array of up to 5 strings),
+     useSupplements (boolean), activityLevel ("Sedentary"|"Moderate"|"Active"|"Extra Active"),
+     sports (array of {name, timesPerWeek, durationMin} - the FULL list, rewritten),
+     competition ({enabled, sport, date "yyyy-mm-dd", goal}).
+     When a field is a free-text string (contraindications, dietaryPreferences), MERGE the new fact into the existing text rather than replacing it. Return {} if nothing lasting was said.
+  7. Respond ONLY with raw JSON: {"plan": [7 DayPlan objects], "profile": {...}}. Respond in ${lang}.`;
 
-  const prompt = `Based on our consultation, provide the updated 7-day plan. Return ONLY the JSON array.`;
+  const prompt = `Based on our consultation, provide the updated plan and profile changes. Return ONLY the JSON object.`;
 
   try {
     const text = await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: prompt }] }], "application/json");
     const parsed = JSON.parse(repairJson(text));
-    return normalizeWeeklyPlan(parsed, language);
+    // Older responses (and a model that ignores rule 7) return the bare array.
+    const planRaw = Array.isArray(parsed) ? parsed : parsed?.plan;
+    return {
+      plan: normalizeWeeklyPlan(planRaw, language),
+      profile: Array.isArray(parsed) ? {} : normalizeProfilePatch(parsed?.profile, userProfile),
+    };
   } catch (e: any) {
     console.error('[refinePlanWithConsultation] error:', e);
     throw e;
