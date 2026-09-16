@@ -73,6 +73,46 @@ export interface CompetitionTarget {
   goal: string;
 }
 
+/**
+ * One week of a multi-week programme. The outline fields come from the model
+ * once, up front; `plan` is filled in when that week's detailed plan is
+ * generated and stays here afterwards, which is what makes the history real.
+ */
+export interface ProgramWeek {
+  /** 1-based position in the programme. */
+  index: number;
+  /** ISO date of the week's Monday. */
+  startDate: string;
+  phase: 'base' | 'build' | 'peak' | 'taper' | 'race' | 'off';
+  /** One line: what this week is for. */
+  focus: string;
+  /** Volume and intensity guidance for the sessions. */
+  trainingTarget: string;
+  /** Calories and macro emphasis for the week. */
+  nutritionTarget: string;
+  /** Two or three sessions the week is built around. */
+  keySessions: string[];
+  /** The detailed plan once it exists. */
+  plan?: DayPlan[];
+  /** Filled when the week is archived. */
+  completionPercent?: number;
+  weightKg?: number;
+}
+
+export interface TrainingProgram {
+  createdAt: string;
+  /** Monday the programme starts on. */
+  startDate: string;
+  /** Competition date, or start + 8 weeks when there is no event. */
+  endDate: string;
+  /** What the whole block is for, e.g. the competition goal. */
+  goal: string;
+  /** True when built around a competition date. */
+  forCompetition: boolean;
+  language: Language;
+  weeks: ProgramWeek[];
+}
+
 /** A finished week, kept so the next plan can build on it. */
 export interface WeekRecord {
   /** When the plan was generated. */

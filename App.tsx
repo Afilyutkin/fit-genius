@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Tab, UserProfile, DailyStats, Language, Theme } from './types';
 import { normalizeWeeklyPlan } from './services/geminiService';
 import { clearPlanHistory } from './utils/planHistory';
+import { clearProgram } from './utils/program';
 import { normalizeSports } from './utils/profile';
 import Sidebar from './components/Sidebar';
 import AICoach from './components/AICoach';
@@ -268,6 +269,7 @@ const App: React.FC = () => {
 
     Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
     clearPlanHistory();
+    clearProgram();
     setUserProfile(INITIAL_PROFILE);
     setApiKeyState('');
     setWaterConsumed(0);
