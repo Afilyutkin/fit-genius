@@ -244,7 +244,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                     </Reveal>
 
                     <Reveal delay={60} from="left" className="w-full lg:w-auto lg:shrink-0">
-                        <div className="flex flex-row lg:flex-col items-stretch gap-3 sm:gap-4 lg:items-end">
+                        <div className="flex flex-col sm:flex-row lg:flex-col items-stretch gap-3 sm:gap-4 lg:items-end">
                             <div className="flex flex-1 lg:flex-none items-stretch gap-4 sm:gap-5 rounded-[var(--radius-card)]
                                             border border-white/10 bg-white/[0.07] backdrop-blur-xl
                                             px-4 sm:px-5 py-3 sm:py-4 min-w-0">
@@ -543,9 +543,9 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                         {/* Each sport carries its own rhythm: a runner who also
                             swims twice a week is not one global number. */}
                         <div>
-                            <div className="flex items-center justify-between gap-3 mb-2">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3 mb-2">
                                 <label className="label mb-0">{t.preferredSports}</label>
-                                <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                                <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
                                     {t.weeklyTotal}: {weeklyTotal} {t.sessionsShort} · {weeklyHours} {isRu ? 'ч' : 'h'}
                                 </span>
                             </div>
@@ -639,10 +639,10 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                                              peer-checked:translate-x-4" />
                         </span>
                         <span>
-                            <span className="font-display text-lg font-semibold uppercase tracking-wide
-                                             text-slate-900 dark:text-white flex items-center gap-2">
-                                <Trophy size={17} className="text-brand-700 dark:text-brand-300" />
-                                {t.competition}
+                            <span className="font-display text-base sm:text-lg font-semibold uppercase tracking-wide
+                                             text-slate-900 dark:text-white flex items-start gap-2 leading-tight">
+                                <Trophy size={17} className="text-brand-700 dark:text-brand-300 shrink-0 mt-0.5" />
+                                <span className="min-w-0">{t.competition}</span>
                             </span>
                             <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                                 {t.competitionHint}
