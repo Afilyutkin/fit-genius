@@ -5,6 +5,7 @@ import { Stage, Reveal, Avatar } from './Stage';
 import { Tab, UserProfile, Language } from '../types';
 import AnimatedNumber from './AnimatedNumber';
 import { totalWorkoutsPerWeek } from '../utils/profile';
+import { pluralRu } from '../utils/plural';
 
 interface HeroStageProps {
   userProfile: UserProfile;
@@ -51,14 +52,6 @@ const RulerTicker: React.FC = () => {
       <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-0.5 h-10 rounded-full bg-brand-300" />
     </div>
   );
-};
-
-/** Russian counts need three forms: 1 упражнение, 2 упражнения, 5 упражнений. */
-const pluralRu = (n: number, one: string, few: string, many: string) => {
-  const mod10 = n % 10, mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
-  return many;
 };
 
 /** Small glass tile. `tone` picks the surface: frosted, or a lit gradient. */

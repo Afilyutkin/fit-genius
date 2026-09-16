@@ -4,6 +4,7 @@ import { ChatMessage, UserProfile, Language } from '../types';
 import { generateCoachResponse, refinePlanWithConsultation, extractProfileChanges, describeGeminiError, ProfilePatch } from '../services/geminiService';
 import MarkdownContent from './MarkdownContent';
 import { totalWorkoutsPerWeek } from '../utils/profile';
+import { pluralRu } from '../utils/plural';
 
 interface AICoachProps {
   userProfile: UserProfile;
@@ -13,14 +14,6 @@ interface AICoachProps {
 }
 
 const INTRO_KEY = 'zenith_coach_intro_seen';
-
-/** 1 тренировка, 2 тренировки, 5 тренировок. */
-const pluralRu = (n: number, one: string, few: string, many: string) => {
-  const mod10 = n % 10, mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
-  return many;
-};
 
 /** Human-readable lines for the fields a consultation rewrote. */
 const describePatch = (patch: ProfilePatch, isRu: boolean): string[] => {
