@@ -1,5 +1,6 @@
 import { UserProfile, WeekRecord, Language } from '../types';
 import { describeSports } from './profile';
+import { recordWeekOutcome } from './program';
 
 export const PLAN_HISTORY_KEY = 'zenith_plan_history';
 
@@ -77,6 +78,7 @@ export const archiveFinishedWeek = (profile: UserProfile): WeekRecord | null => 
   };
 
   savePlanHistory([...loadPlanHistory(), record]);
+  recordWeekOutcome(profile.planCreatedAt, record.completionPercent, profile.weight);
   return record;
 };
 
