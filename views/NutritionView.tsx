@@ -13,6 +13,8 @@ import { generateWeeklyPlan, askPlanQuestion, generateMealDetails, generateSuppl
 import { getTranslation } from '../utils/translations';
 import { archiveFinishedWeek } from '../utils/planHistory';
 import { dayLabel, shortDayLabel } from '../utils/days';
+import ProgramTimeline from '../components/ProgramTimeline';
+import { loadProgram } from '../utils/program';
 
 interface NutritionViewProps {
     language: Language;
@@ -223,6 +225,8 @@ const NutritionView: React.FC<NutritionViewProps> = ({
     const autoGenRef = useRef(false);
 
     const isRu = language === 'ru';
+    const [program, setProgram] = useState(() => loadProgram());
+    useEffect(() => { setProgram(loadProgram()); }, [userProfile.weeklyPlan, userProfile.competition]);
     const weeklyPlan = Array.isArray(userProfile?.weeklyPlan) ? userProfile.weeklyPlan : [];
     const hasWeeklyPlan = weeklyPlan.length > 0;
     const safeDayIndex = Math.min(selectedDayIndex, Math.max(0, weeklyPlan.length - 1));
@@ -393,6 +397,8 @@ const NutritionView: React.FC<NutritionViewProps> = ({
                     </div>
                 )}
             </PlanHero>
+
+            {program && !loading && <ProgramTimeline program={program} language={language} mode="nutrition" />}
 
             {hasWeeklyPlan && !loading && (
                 <DaySelector

@@ -9,6 +9,8 @@ import DaySelector from '../components/DaySelector';
 import PlanHero from '../components/PlanHero';
 import AnimatedNumber from '../components/AnimatedNumber';
 import IntensityHint from '../components/IntensityHint';
+import ProgramTimeline from '../components/ProgramTimeline';
+import { loadProgram } from '../utils/program';
 import { UserProfile, Language, ExerciseDetail, SessionBlock } from '../types';
 import { generateWeeklyPlan, askPlanQuestion, generateExerciseDetails, describeGeminiError } from '../services/geminiService';
 import { getTranslation } from '../utils/translations';
@@ -200,6 +202,10 @@ const WorkoutsView: React.FC<WorkoutsViewProps> = ({ userProfile, setUserProfile
     const autoGenRef = useRef(false);
 
     const isRu = language === 'ru';
+    // The multi-week block; re-read whenever the plan changes, since generation
+    // writes the new week into it.
+    const [program, setProgram] = useState(() => loadProgram());
+    useEffect(() => { setProgram(loadProgram()); }, [userProfile.weeklyPlan, userProfile.competition]);
     const weeklyPlan = Array.isArray(userProfile?.weeklyPlan) ? userProfile.weeklyPlan : [];
     const hasWeeklyPlan = weeklyPlan.length > 0;
 
@@ -368,6 +374,8 @@ const WorkoutsView: React.FC<WorkoutsViewProps> = ({ userProfile, setUserProfile
                     </div>
                 )}
             </PlanHero>
+
+            {program && !loading && <ProgramTimeline program={program} language={language} />}
 
             {hasWeeklyPlan && !loading && (
                 <DaySelector
