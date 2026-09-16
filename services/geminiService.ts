@@ -1,9 +1,13 @@
-import { UserProfile, ChatMessage, DayPlan, MealDetails, PlannedMeal, ExerciseDetail, SessionBlock } from "../types";
+import { UserProfile, ChatMessage, DayPlan, MealDetails, PlannedMeal, ExerciseDetail, SessionBlock, TrainingProgram } from "../types";
 import { describeSports, sportNames, totalWorkoutsPerWeek, normalizeSports } from "../utils/profile";
 import { DAY_NAMES } from "../utils/days";
 import { summarizeHistoryForPrompt } from "../utils/planHistory";
-import { describeCompetitionForPrompt } from "../utils/competition";
+import { describeCompetitionForPrompt, PHASE_LABELS } from "../utils/competition";
 import { describeMethodologyForPrompt } from "../utils/methodology";
+import {
+  loadProgram, saveProgram, buildProgramSkeleton, fillOutlineLocally, programIsStale,
+  describeProgramForPrompt, attachPlanToCurrentWeek,
+} from "../utils/program";
 
 export const SYSTEM_INSTRUCTION_BASE = `
 You are Fit Genius AI, a world-class empathetic and motivating fitness & health coach.
@@ -701,6 +705,72 @@ export const generateCoachResponse = async (
   return await geminiRest(key, systemInstruction, contents);
 };
 
+/**
+ * Words for every week of the programme, in one small call. Dates and phases
+ * are fixed by the skeleton; the model fills focus, targets and key sessions.
+ * Falls back to a local generic outline so the programme always exists.
+ */
+export const generateProgramOutline = async (
+  userProfile: UserProfile,
+  apiKey?: string,
+  language: 'en' | 'ru' = 'en'
+): Promise<TrainingProgram> => {
+  const skeleton = buildProgramSkeleton(userProfile, language);
+  const key = (apiKey || localStorage.getItem('zenith_gemini_key') || '').trim();
+  if (!key) return fillOutlineLocally(skeleton);
+
+  const lang = language === 'ru' ? 'Russian' : 'English';
+  const labels = PHASE_LABELS[language];
+  const weeksBrief = skeleton.weeks.map(w => `${w.index}: starts ${w.startDate}, phase ${w.phase} (${labels[w.phase]})`).join('\n');
+
+  const systemInstruction = `You are a head coach writing a ${skeleton.weeks.length}-week programme outline.
+  ATHLETE: ${userProfile.name}, level ${userProfile.fitnessLevel}, goals: ${userProfile.fitnessGoals.join(', ')}. Sports: ${describeSports(userProfile) || 'general fitness'}. Constraints: ${userProfile.contraindications || 'none'}. Diet: ${userProfile.dietaryPreferences || 'no restrictions'}.
+  BLOCK GOAL: ${skeleton.goal || 'general fitness'}. ${skeleton.forCompetition ? `Competition on ${skeleton.endDate}.` : 'No competition: a two-month progression with a deload every fourth week.'}
+  ${describeMethodologyForPrompt(userProfile, language)}
+
+  WEEKS (fixed, do not change dates or phases):
+${weeksBrief}
+
+  For EACH week write: "focus" (one short line, what the week is for), "trainingTarget" (volume and intensity guidance, concrete: sessions, RPE or zones, how much more or less than the week before), "nutritionTarget" (calories direction and protein per kg, one line), "keySessions" (2-3 short names of the sessions the week is built around).
+  Progress the load logically week to week; taper and race weeks reduce volume, never add new movements.
+  Respond ONLY with a JSON array of ${skeleton.weeks.length} objects: {"index": number, "focus": string, "trainingTarget": string, "nutritionTarget": string, "keySessions": string[]}. All text in ${lang}. No dashes.`;
+
+  try {
+    const text = await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: 'Write the outline. JSON array only.' }] }], "application/json");
+    const parsed = JSON.parse(repairJson(text));
+    const rows: any[] = Array.isArray(parsed) ? parsed : (parsed?.weeks ?? []);
+    const byIndex = new Map<number, any>(rows.map(r => [Number(r?.index), r]));
+    const weeks = skeleton.weeks.map(w => {
+      const r = byIndex.get(w.index);
+      return r ? {
+        ...w,
+        focus: toText(r.focus) || w.focus,
+        trainingTarget: toText(r.trainingTarget) || w.trainingTarget,
+        nutritionTarget: toText(r.nutritionTarget) || w.nutritionTarget,
+        keySessions: Array.isArray(r.keySessions) ? r.keySessions.map(toText).filter(Boolean).slice(0, 3) : w.keySessions,
+      } : w;
+    });
+    // Anything the model left blank gets the local wording.
+    return fillOutlineLocally({ ...skeleton, weeks });
+  } catch (e) {
+    console.warn('[generateProgramOutline] falling back to local outline:', e);
+    return fillOutlineLocally(skeleton);
+  }
+};
+
+/** The programme the weekly plan should be written against, built if missing. */
+export const ensureProgram = async (
+  userProfile: UserProfile,
+  apiKey?: string,
+  language: 'en' | 'ru' = 'en'
+): Promise<TrainingProgram> => {
+  const existing = loadProgram();
+  if (existing && !programIsStale(existing, userProfile)) return existing;
+  const program = await generateProgramOutline(userProfile, apiKey, language);
+  saveProgram(program);
+  return program;
+};
+
 export const generateWeeklyPlan = async (
   userProfile: UserProfile,
   apiKey?: string,
@@ -716,6 +786,9 @@ export const generateWeeklyPlan = async (
   // Level- and sport-appropriate coaching frameworks, so a first-timer and a
   // competitive athlete stop getting the same undifferentiated week.
   const methodology = describeMethodologyForPrompt(userProfile, language);
+  // Where this week sits in the multi-week block, and what it is for.
+  const program = await ensureProgram(userProfile, key, language);
+  const programBrief = describeProgramForPrompt(program, language);
 
   const systemInstruction = `You are a holistic Health AI named Fit Genius. 
   CRITICAL RULE: You MUST strictly adhere to the following user profile:
@@ -758,7 +831,7 @@ export const generateWeeklyPlan = async (
       : 'DISABLED. Return an empty array [] for sportsNutrition on every day.'}.
 
   ${methodology}
-  ${competition}
+  ${competition}${programBrief}
   ${history}
   Return ONLY a raw JSON array of 7 DayPlan objects for a full week (Monday-Sunday). 
   LANGUAGE: EVERY string a user can read must be written in ${lang}, with no exceptions and no mixing:
@@ -794,7 +867,10 @@ export const generateWeeklyPlan = async (
   try {
     const text = await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: prompt }] }], "application/json");
     const parsed = JSON.parse(repairJson(text));
-    return normalizeWeeklyPlan(parsed, language);
+    const plan = normalizeWeeklyPlan(parsed, language);
+    // The week keeps its plan, so the programme becomes the history.
+    attachPlanToCurrentWeek(plan);
+    return plan;
   } catch (e: any) {
     console.error('[generateWeeklyPlan] error:', e);
     throw e;
