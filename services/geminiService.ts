@@ -2,7 +2,7 @@ import { UserProfile, ChatMessage, DayPlan, MealDetails, PlannedMeal, ExerciseDe
 import { describeSports, sportNames, totalWorkoutsPerWeek, normalizeSports, describeGoals } from "../utils/profile";
 import { DAY_NAMES } from "../utils/days";
 import { summarizeHistoryForPrompt } from "../utils/planHistory";
-import { describeCompetitionForPrompt, normalizeCompetitions } from "../utils/competition";
+import { describeCompetitionForPrompt, normalizeCompetitions, getPrimaryCompetition, getUpcomingCompetitions } from "../utils/competition";
 import { describeMethodologyForPrompt } from "../utils/methodology";
 import {
   loadProgram, saveProgram, buildProgramSkeleton, fillOutlineLocally, programIsStale,
@@ -825,9 +825,16 @@ export const generateProgramOutline = async (
   const lang = language === 'ru' ? 'Russian' : 'English';
   const weeksBrief = skeleton.weeks.map(w => `${w.index}: starts ${w.startDate}, phase ${w.phase} (${weekLabel(w, skeleton, language)})`).join('\n');
 
+  const primary = getPrimaryCompetition(userProfile);
+  const others = getUpcomingCompetitions(userProfile).filter(o => o !== primary);
+  const competitionBrief = primary
+    ? `Priority target: ${primary.sport || 'event'} on ${primary.date}, priority ${primary.priority} — this is what the phases above are built around.` +
+      (others.length ? ` The block runs through ${skeleton.endDate} to also cover: ${others.map(o => `${o.sport || 'event'} on ${o.date} (priority ${o.priority})`).join(', ')} — give these proportional touches of event-specific work without breaking the priority target's taper.` : '')
+    : 'No competition: a two-month progression with a deload every fourth week.';
+
   const systemInstruction = `You are a head coach writing a ${skeleton.weeks.length}-week programme outline.
   ATHLETE: ${userProfile.name}, level ${userProfile.fitnessLevel}, goals: ${describeGoals(userProfile.fitnessGoals, language)}. Sports: ${describeSports(userProfile) || 'general fitness'}. Constraints: ${userProfile.contraindications || 'none'}. Diet: ${userProfile.dietaryPreferences || 'no restrictions'}.
-  BLOCK GOAL: ${skeleton.goal || 'general fitness'}. ${skeleton.forCompetition ? `Competition on ${skeleton.endDate}.` : 'No competition: a two-month progression with a deload every fourth week.'}
+  BLOCK GOAL: ${skeleton.goal || 'general fitness'}. ${competitionBrief}
   ${describeMethodologyForPrompt(userProfile, language)}
 
   WEEKS (fixed, do not change dates or phases):
