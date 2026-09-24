@@ -4,6 +4,7 @@ import { normalizeWeeklyPlan } from './services/geminiService';
 import { clearPlanHistory } from './utils/planHistory';
 import { clearProgram } from './utils/program';
 import { normalizeSports } from './utils/profile';
+import { normalizeCompetitions } from './utils/competition';
 import Sidebar from './components/Sidebar';
 import AICoach from './components/AICoach';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -34,6 +35,7 @@ const INITIAL_PROFILE: UserProfile = {
   fitnessLevel: 'Beginner',
   contraindications: '',
   sports: [{ name: 'Running', timesPerWeek: 3, durationMin: 45 }],
+  competitions: [],
   mealsPerDay: 4,
   dietaryPreferences: 'Balanced',
   activityLevel: 'Moderate',
@@ -88,10 +90,13 @@ const hydrateProfile = (raw: any): UserProfile => {
     : INITIAL_PROFILE.fitnessGoals;
   // Handles both the current shape and pre-per-sport profiles.
   merged.sports = normalizeSports(raw);
+  // Handles both the current list and the pre-list single `competition` field.
+  merged.competitions = normalizeCompetitions(raw);
   // Drop the superseded keys so they do not linger in storage for ever.
   delete (merged as any).preferredSports;
   delete (merged as any).workoutsPerWeek;
   delete (merged as any).workoutDurationMin;
+  delete (merged as any).competition;
   merged.completedExercises = Array.isArray(raw.completedExercises) ? raw.completedExercises : [];
   merged.weeklyPlan = Array.isArray(raw.weeklyPlan) && raw.weeklyPlan.length
     ? normalizeWeeklyPlan(raw.weeklyPlan, raw.planLanguage === 'ru' ? 'ru' : 'en')

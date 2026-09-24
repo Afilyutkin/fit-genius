@@ -62,8 +62,13 @@ export interface SportPreference {
   durationMin: number;
 }
 
+/** How much this event should shape training relative to the others. */
+export type CompetitionPriority = 'high' | 'medium' | 'low';
+
 /** An event the athlete is training for; drives periodisation of the plan. */
 export interface CompetitionTarget {
+  /** Stable across reorder and removal, so list animations track the right row. */
+  id?: string;
   enabled: boolean;
   /** Which discipline the athlete competes in. */
   sport: string;
@@ -71,6 +76,8 @@ export interface CompetitionTarget {
   date: string;
   /** What counts as success, e.g. "полумарафон за 1:45". */
   goal: string;
+  /** How much this event should influence the plan when it isn't the nearest one. */
+  priority: CompetitionPriority;
 }
 
 /**
@@ -144,8 +151,8 @@ export interface UserProfile {
   sports: SportPreference[];
   /** How many times a day the user eats (excluding supplements). */
   mealsPerDay: number;
-  /** Optional: set when the athlete is preparing for an event. */
-  competition?: CompetitionTarget;
+  /** Events the athlete is preparing for; the nearest enabled one drives periodisation. */
+  competitions: CompetitionTarget[];
   dietaryPreferences: string;
   activityLevel: 'Sedentary' | 'Moderate' | 'Active' | 'Extra Active';
   isSetup: boolean;
