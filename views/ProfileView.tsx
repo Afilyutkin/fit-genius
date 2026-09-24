@@ -11,7 +11,7 @@ import { getTranslation } from '../utils/translations';
 import { archiveFinishedWeek } from '../utils/planHistory';
 import { Stage, Reveal, StageStat } from '../components/Stage';
 import { DEFAULT_SPORT, SPORT_LIMITS, newSportId, totalWorkoutsPerWeek, totalMinutesPerWeek, sportNames } from '../utils/profile';
-import { DEFAULT_COMPETITION, PHASE_LABELS, phaseForWeeks, weeksUntil } from '../utils/competition';
+import { DEFAULT_COMPETITION, PHASE_LABELS, phaseForWeeks, weeksUntil, newCompetitionId, getPrimaryCompetition } from '../utils/competition';
 import { methodologyNames, describeLevelFocus } from '../utils/methodology';
 
 /** How many fitness goals the plan generator accepts at once. */
@@ -149,16 +149,26 @@ const ProfileView: React.FC<ProfileViewProps> = ({
         setUserProfile(prev => ({ ...prev, sports: [...prev.sports, { ...DEFAULT_SPORT, id: newSportId() }] }));
     };
 
-    const competition = userProfile.competition ?? DEFAULT_COMPETITION;
-    const updateCompetition = (patch: Partial<CompetitionTarget>) => {
+    const removeSport = (index: number) => {
+        setUserProfile(prev => ({ ...prev, sports: prev.sports.filter((_, i) => i !== index) }));
+    };
+
+    const updateCompetition = (index: number, patch: Partial<CompetitionTarget>) => {
         setUserProfile(prev => ({
             ...prev,
-            competition: { ...DEFAULT_COMPETITION, ...prev.competition, ...patch },
+            competitions: prev.competitions.map((c, i) => (i === index ? { ...c, ...patch } : c)),
         }));
     };
 
-    const removeSport = (index: number) => {
-        setUserProfile(prev => ({ ...prev, sports: prev.sports.filter((_, i) => i !== index) }));
+    const addCompetition = () => {
+        setUserProfile(prev => ({
+            ...prev,
+            competitions: [...prev.competitions, { ...DEFAULT_COMPETITION, id: newCompetitionId(), enabled: true }],
+        }));
+    };
+
+    const removeCompetition = (index: number) => {
+        setUserProfile(prev => ({ ...prev, competitions: prev.competitions.filter((_, i) => i !== index) }));
     };
 
     const toggleGoal = (goalKey: string) => {
@@ -223,7 +233,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     ];
 
     const goalsFull = userProfile.fitnessGoals.length >= MAX_GOALS;
-    const competitionWeeks = competition.date ? weeksUntil(competition.date) : NaN;
+    const primaryCompetition = getPrimaryCompetition(userProfile);
     const weeklyTotal = totalWorkoutsPerWeek(userProfile);
     const weeklyHours = Math.round(totalMinutesPerWeek(userProfile) / 6) / 10;
 
@@ -623,105 +633,143 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                     </div>
                 </section>
 
-                {/* Competition target: turns the plan into a periodised build-up */}
+                {/* Competition targets: turn the plan into a periodised build-up */}
                 <div className="card p-6 sm:p-8 md:col-span-2">
-                    <label className="flex items-start gap-3 cursor-pointer">
-                        <span className="relative inline-flex shrink-0 mt-0.5">
-                            <input
-                                type="checkbox"
-                                className="sr-only peer"
-                                checked={competition.enabled}
-                                onChange={(e) => updateCompetition({ enabled: e.target.checked })}
-                            />
-                            <span className="block w-10 h-6 rounded-full transition-colors bg-slate-300 dark:bg-slate-700
-                                             peer-checked:bg-brand-300" />
-                            <span className="absolute left-1 top-1 w-4 h-4 rounded-full bg-white transition-transform
-                                             peer-checked:translate-x-4" />
-                        </span>
-                        <span>
-                            <span className="font-display text-base sm:text-lg font-semibold uppercase tracking-wide
-                                             text-slate-900 dark:text-white flex items-start gap-2 leading-tight">
-                                <Trophy size={17} className="text-brand-700 dark:text-brand-300 shrink-0 mt-0.5" />
-                                <span className="min-w-0">{t.competition}</span>
-                            </span>
-                            <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                                {t.competitionHint}
-                            </span>
-                        </span>
-                    </label>
+                    <span className="font-display text-base sm:text-lg font-semibold uppercase tracking-wide
+                                     text-slate-900 dark:text-white flex items-start gap-2 leading-tight">
+                        <Trophy size={17} className="text-brand-700 dark:text-brand-300 shrink-0 mt-0.5" />
+                        <span className="min-w-0">{t.competition}</span>
+                    </span>
+                    <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                        {t.competitionHint}
+                    </span>
 
-                    <AnimatePresence initial={false}>
-                    {competition.enabled && (
-                        <motion.div
-                            key="competition-fields"
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={reduce ? { duration: 0 } : {
-                                height: { duration: 0.24, ease: [0.16, 1, 0.3, 1] },
-                                opacity: { duration: 0.18 },
-                            }}
-                            className="overflow-hidden"
-                        >
-                        <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <div>
-                                <label htmlFor="comp-sport" className="label">{t.competitionSport}</label>
-                                <input
-                                    id="comp-sport"
-                                    name="competition-sport"
-                                    type="text"
-                                    autoComplete="off"
-                                    list="comp-sport-options"
-                                    value={competition.sport}
-                                    onChange={(e) => updateCompetition({ sport: e.target.value })}
-                                    placeholder={sportNames(userProfile)[0] || (isRu ? 'например, бег' : 'e.g. running')}
-                                    className="input"
-                                />
-                                <datalist id="comp-sport-options">
-                                    {sportNames(userProfile).map(name => <option key={name} value={name} />)}
-                                </datalist>
-                            </div>
+                    <div className="mt-5 space-y-3">
+                        <AnimatePresence initial={false}>
+                        {userProfile.competitions.map((competition, index) => {
+                            const competitionWeeks = competition.date ? weeksUntil(competition.date) : NaN;
+                            const isPrimary = !!primaryCompetition && primaryCompetition.id === competition.id;
+                            return (
+                            <motion.div
+                                key={competition.id ?? index}
+                                layout={!reduce}
+                                initial={reduce ? false : { opacity: 0, y: -8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={reduce ? { opacity: 0 } : { opacity: 0, x: -12 }}
+                                transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                                className="surface-muted rounded-[var(--radius-control)] p-4 space-y-3"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <label className="relative inline-flex shrink-0">
+                                        <input
+                                            type="checkbox"
+                                            className="sr-only peer"
+                                            checked={competition.enabled}
+                                            onChange={(e) => updateCompetition(index, { enabled: e.target.checked })}
+                                        />
+                                        <span className={`block w-10 h-6 rounded-full transition-colors ${competition.enabled ? 'bg-brand-300' : 'bg-slate-300 dark:bg-slate-700'}`} />
+                                        <span className={`absolute left-1 top-1 w-4 h-4 rounded-full bg-white transition-transform ${competition.enabled ? 'translate-x-4' : ''}`} />
+                                    </label>
 
-                            <div>
-                                <label htmlFor="comp-date" className="label">{t.competitionDate}</label>
-                                <input
-                                    id="comp-date"
-                                    type="date"
-                                    value={competition.date}
-                                    min={new Date().toISOString().slice(0, 10)}
-                                    onChange={(e) => updateCompetition({ date: e.target.value })}
-                                    className="input"
-                                />
-                            </div>
+                                    {isPrimary && (
+                                        <span className="chip bg-brand-300/15 border-brand-500/30 text-brand-800 dark:text-brand-300 text-[10px]">
+                                            {t.competitionPrimaryBadge}
+                                        </span>
+                                    )}
 
-                            <div>
-                                <label htmlFor="comp-goal" className="label">{t.competitionGoal}</label>
-                                <input
-                                    id="comp-goal"
-                                    name="competition-goal"
-                                    type="text"
-                                    autoComplete="off"
-                                    value={competition.goal}
-                                    onChange={(e) => updateCompetition({ goal: e.target.value })}
-                                    placeholder={isRu ? 'например, полумарафон за 1:45' : 'e.g. half marathon under 1:45'}
-                                    className="input"
-                                />
-                            </div>
+                                    <button
+                                        onClick={() => removeCompetition(index)}
+                                        className="btn-danger tap-target p-2.5 shrink-0 ml-auto"
+                                        title={t.removeCompetition}
+                                        aria-label={`${t.removeCompetition}: ${competition.sport || index + 1}`}
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
 
-                            {competition.date && (
-                                <p className="sm:col-span-3 text-[11px] text-slate-500 dark:text-slate-400">
-                                    {competitionWeeks < 0
-                                        ? t.competitionPast
-                                        : `${PHASE_LABELS[language][phaseForWeeks(competitionWeeks)]} · ${
-                                            competitionWeeks === 0
-                                                ? (isRu ? 'старт на этой неделе' : 'event this week')
-                                                : (isRu ? `осталось ${competitionWeeks} нед.` : `${competitionWeeks} week(s) to go`)}`}
-                                </p>
-                            )}
-                        </div>
-                        </motion.div>
+                                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                    <div>
+                                        <label htmlFor={`comp-sport-${index}`} className="label">{t.competitionSport}</label>
+                                        <input
+                                            id={`comp-sport-${index}`}
+                                            type="text"
+                                            autoComplete="off"
+                                            list="comp-sport-options"
+                                            value={competition.sport}
+                                            onChange={(e) => updateCompetition(index, { sport: e.target.value })}
+                                            placeholder={sportNames(userProfile)[0] || (isRu ? 'например, бег' : 'e.g. running')}
+                                            className="input"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label htmlFor={`comp-date-${index}`} className="label">{t.competitionDate}</label>
+                                        <input
+                                            id={`comp-date-${index}`}
+                                            type="date"
+                                            value={competition.date}
+                                            min={new Date().toISOString().slice(0, 10)}
+                                            onChange={(e) => updateCompetition(index, { date: e.target.value })}
+                                            className="input"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label htmlFor={`comp-goal-${index}`} className="label">{t.competitionGoal}</label>
+                                        <input
+                                            id={`comp-goal-${index}`}
+                                            type="text"
+                                            autoComplete="off"
+                                            value={competition.goal}
+                                            onChange={(e) => updateCompetition(index, { goal: e.target.value })}
+                                            placeholder={isRu ? 'например, полумарафон за 1:45' : 'e.g. half marathon under 1:45'}
+                                            className="input"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label htmlFor={`comp-priority-${index}`} className="label">{t.competitionPriority}</label>
+                                        <select
+                                            id={`comp-priority-${index}`}
+                                            value={competition.priority}
+                                            onChange={(e) => updateCompetition(index, { priority: e.target.value as CompetitionTarget['priority'] })}
+                                            className="input"
+                                        >
+                                            <option value="high">{t.priorityHigh}</option>
+                                            <option value="medium">{t.priorityMedium}</option>
+                                            <option value="low">{t.priorityLow}</option>
+                                        </select>
+                                    </div>
+
+                                    {competition.date && (
+                                        <p className="sm:col-span-4 text-[11px] text-slate-500 dark:text-slate-400">
+                                            {competitionWeeks < 0
+                                                ? t.competitionPast
+                                                : `${PHASE_LABELS[language][phaseForWeeks(competitionWeeks)]} · ${
+                                                    competitionWeeks === 0
+                                                        ? (isRu ? 'старт на этой неделе' : 'event this week')
+                                                        : (isRu ? `осталось ${competitionWeeks} нед.` : `${competitionWeeks} week(s) to go`)}`}
+                                        </p>
+                                    )}
+                                </div>
+                            </motion.div>
+                            );
+                        })}
+                        </AnimatePresence>
+                        <datalist id="comp-sport-options">
+                            {sportNames(userProfile).map(name => <option key={name} value={name} />)}
+                        </datalist>
+                    </div>
+
+                    {!userProfile.competitions.length && (
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 py-2">
+                            {t.noCompetitions}
+                        </p>
                     )}
-                    </AnimatePresence>
+
+                    <button onClick={addCompetition} className="btn-secondary w-full mt-3">
+                        <Plus size={16} /> {t.addCompetition}
+                    </button>
                 </div>
 
                 {/* ── Medical ───────────────────────────────────── */}

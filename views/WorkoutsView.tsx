@@ -95,7 +95,7 @@ const ExerciseCard: React.FC<{
                 </motion.button>
 
                 <div className="flex-1 min-w-0">
-                    <h3 className={`font-display text-lg sm:text-xl font-semibold uppercase tracking-wide break-words ${isCompleted
+                    <h3 className={`font-display text-lg sm:text-xl font-semibold uppercase tracking-wide break-words hyphens-auto text-pretty ${isCompleted
                         ? 'text-slate-600 dark:text-slate-400 line-through decoration-brand-500/60'
                         : 'text-slate-900 dark:text-white'}`}>
                         {exercise.name}
@@ -205,7 +205,7 @@ const WorkoutsView: React.FC<WorkoutsViewProps> = ({ userProfile, setUserProfile
     // The multi-week block; re-read whenever the plan changes, since generation
     // writes the new week into it.
     const [program, setProgram] = useState(() => loadProgram());
-    useEffect(() => { setProgram(loadProgram()); }, [userProfile.weeklyPlan, userProfile.competition]);
+    useEffect(() => { setProgram(loadProgram()); }, [userProfile.weeklyPlan, userProfile.competitions]);
     const weeklyPlan = Array.isArray(userProfile?.weeklyPlan) ? userProfile.weeklyPlan : [];
     const hasWeeklyPlan = weeklyPlan.length > 0;
 

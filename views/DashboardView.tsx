@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, Tooltip, XAxis, YAxis } from 'recharts';
-import { DailyStats, UserProfile, Language, Achievement, Tab } from '../types';
+import { DailyStats, UserProfile, Language, Achievement, Tab, CompetitionTarget } from '../types';
 import {
   Flame, Footprints, Clock, Activity, Watch, RefreshCw, Zap, History,
   Trophy, Target, Scale, Droplet, Check, Users, Crown, Medal, ArrowDown, ArrowUp, Minus, AlertTriangle
@@ -9,7 +9,7 @@ import { getTranslation } from '../utils/translations';
 import { motion, useReducedMotion } from 'motion/react';
 import AnimatedNumber from '../components/AnimatedNumber';
 import { loadPlanHistory } from '../utils/planHistory';
-import { PHASE_LABELS, phaseForWeeks, weeksUntil } from '../utils/competition';
+import { PHASE_LABELS, phaseForWeeks, weeksUntil, getPrimaryCompetition, getUpcomingCompetitions } from '../utils/competition';
 import HeroStage from '../components/HeroStage';
 
 interface DashboardProps {
@@ -43,6 +43,7 @@ const DashboardView: React.FC<DashboardProps> = ({
 }) => {
   const t = getTranslation(language).dashboard;
   const AT = getTranslation(language).achievements;
+  const tProfile = getTranslation(language).profile;
   const isRu = language === 'ru';
 
   const [isWatchConnected, setIsWatchConnected] = useState(false);
@@ -52,13 +53,18 @@ const DashboardView: React.FC<DashboardProps> = ({
   const [newWeight, setNewWeight] = useState('');
   const [planHistory] = useState(() => loadPlanHistory());
 
+  const primaryCompetition = getPrimaryCompetition(userProfile);
   // null when there is no upcoming event, so the card stays out of the way
   const competitionWeeks = (() => {
-    const c = userProfile.competition;
-    if (!c?.enabled || !c.date) return null;
-    const weeks = weeksUntil(c.date);
+    if (!primaryCompetition) return null;
+    const weeks = weeksUntil(primaryCompetition.date);
     return Number.isNaN(weeks) || weeks < 0 ? null : weeks;
   })();
+  // Anything beyond the primary one, still worth a mention on the dashboard.
+  const upcomingCompetitions = getUpcomingCompetitions(userProfile).filter(c => c.id !== primaryCompetition?.id);
+  const priorityLabel: Record<CompetitionTarget['priority'], string> = {
+    high: tProfile.priorityHigh, medium: tProfile.priorityMedium, low: tProfile.priorityLow,
+  };
 
   const today = new Date().toLocaleDateString(isRu ? 'ru-RU' : 'en-US', {
     weekday: 'long', month: 'long', day: 'numeric'
@@ -528,7 +534,7 @@ const DashboardView: React.FC<DashboardProps> = ({
                 <div className="flex items-center gap-2 mb-4">
                   <Trophy size={20} className="text-brand-700 dark:text-brand-300" />
                   <h2 className="font-display text-lg font-semibold uppercase tracking-wide text-slate-900 dark:text-white">
-                    {userProfile.competition?.sport || (isRu ? 'Соревнование' : 'Competition')}
+                    {primaryCompetition?.sport || (isRu ? 'Соревнование' : 'Competition')}
                   </h2>
                 </div>
 
@@ -545,10 +551,21 @@ const DashboardView: React.FC<DashboardProps> = ({
                   {PHASE_LABELS[language][phaseForWeeks(competitionWeeks)]}
                 </p>
 
-                {!!userProfile.competition?.goal && (
+                {!!primaryCompetition?.goal && (
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-3">
-                    {userProfile.competition.goal}
+                    {primaryCompetition.goal}
                   </p>
+                )}
+
+                {!!upcomingCompetitions.length && (
+                  <div className="mt-4 pt-4 border-t border-slate-200/60 dark:border-slate-700/60 space-y-1.5">
+                    {upcomingCompetitions.map(c => (
+                      <div key={c.id} className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                        <span className="min-w-0 truncate">{c.sport || (isRu ? 'старт' : 'event')} · {weeksUntil(c.date)} {isRu ? 'нед.' : 'wk'}</span>
+                        <span className="shrink-0 ml-2">{priorityLabel[c.priority]}</span>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>

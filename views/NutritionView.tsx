@@ -77,7 +77,7 @@ const MealCard: React.FC<{
 
                 <div className="flex-1 min-w-0">
                     <span className="eyebrow block">{type}</span>
-                    <h3 className="font-display text-lg font-semibold uppercase tracking-wide text-slate-900 dark:text-white break-words mt-0.5">
+                    <h3 className="font-display text-lg font-semibold uppercase tracking-wide text-slate-900 dark:text-white break-words hyphens-auto text-pretty mt-0.5">
                         {meal.name || (isRu ? 'Без названия' : 'Unnamed')}
                     </h3>
                     {/* Macros as separate readouts: a dot-separated string is a metadata smear.
@@ -226,7 +226,7 @@ const NutritionView: React.FC<NutritionViewProps> = ({
 
     const isRu = language === 'ru';
     const [program, setProgram] = useState(() => loadProgram());
-    useEffect(() => { setProgram(loadProgram()); }, [userProfile.weeklyPlan, userProfile.competition]);
+    useEffect(() => { setProgram(loadProgram()); }, [userProfile.weeklyPlan, userProfile.competitions]);
     const weeklyPlan = Array.isArray(userProfile?.weeklyPlan) ? userProfile.weeklyPlan : [];
     const hasWeeklyPlan = weeklyPlan.length > 0;
     const safeDayIndex = Math.min(selectedDayIndex, Math.max(0, weeklyPlan.length - 1));
@@ -450,7 +450,10 @@ const NutritionView: React.FC<NutritionViewProps> = ({
                             <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
                         </header>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {/* Two columns only from xl: at lg the sidebar takes 256px of the
+                            viewport and each card was left with ~100px for its title, which
+                            broke Oswald capitals mid-word ("ОВСЯНА-Я"). */}
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                             {mealItems.map((meal, i) => (
                                 <MealCard
                                     key={`${meal.slot}-${i}`}
