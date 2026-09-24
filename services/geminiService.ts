@@ -1,12 +1,12 @@
 import { UserProfile, ChatMessage, DayPlan, MealDetails, PlannedMeal, ExerciseDetail, SessionBlock, TrainingProgram } from "../types";
-import { describeSports, sportNames, totalWorkoutsPerWeek, normalizeSports } from "../utils/profile";
+import { describeSports, sportNames, totalWorkoutsPerWeek, normalizeSports, describeGoals } from "../utils/profile";
 import { DAY_NAMES } from "../utils/days";
 import { summarizeHistoryForPrompt } from "../utils/planHistory";
-import { describeCompetitionForPrompt, PHASE_LABELS } from "../utils/competition";
+import { describeCompetitionForPrompt, normalizeCompetitions } from "../utils/competition";
 import { describeMethodologyForPrompt } from "../utils/methodology";
 import {
   loadProgram, saveProgram, buildProgramSkeleton, fillOutlineLocally, programIsStale,
-  describeProgramForPrompt, attachPlanToCurrentWeek,
+  describeProgramForPrompt, attachPlanToCurrentWeek, weekLabel,
 } from "../utils/program";
 
 export const SYSTEM_INSTRUCTION_BASE = `
@@ -684,6 +684,109 @@ export const describeKeyCheck = (result: KeyCheckResult, language: 'en' | 'ru' =
   }
 };
 
+/**
+ * Russian is inflected: every adjective must agree with its noun in gender,
+ * number and case, and the model gets this wrong in short titles it writes
+ * quickly ("Запеченный треска" for the feminine "треска"). A grammar
+ * post-check would need a morphology dictionary, so the rule is stated to the
+ * model instead, with the failure spelled out, which is what actually moves
+ * the output. For English there is nothing to agree, so the rule is empty.
+ */
+const grammarRule = (language: 'en' | 'ru'): string =>
+  language === 'ru'
+    ? `RUSSIAN GRAMMAR: every adjective and participle must agree with its noun in gender, number and case.
+  Check the noun's gender before writing the adjective: треска, горбуша, грудка, каша are feminine
+  ("запечённая треска", not "запеченный треска"); филе is neuter ("запечённое филе");
+  творог, судак, омлет are masculine. Write "ё" where it belongs. Proofread every title once before returning it.`
+    : '';
+
+// ── Text proofreading ─────────────────────────────────────────
+//
+// The model occasionally emits a title with a foreign-script glitch
+// ("Замиควчный бег") or an untranslated word ("мягкая stretching сессия").
+// Both are detectable without a dictionary, so the plan is scanned after
+// parsing and only the offending strings go back to the model for a fix.
+// A grammar mistake like "запеченный треска" is not detectable this way;
+// that one is handled by `grammarRule` in the prompt.
+
+/** Every string a user can read in a week's plan, with a setter to replace it. */
+const planStrings = (plan: DayPlan[]): { get: () => string; set: (v: string) => void }[] => {
+  const out: { get: () => string; set: (v: string) => void }[] = [];
+  const field = <T extends object, K extends keyof T>(obj: T, key: K) => {
+    if (typeof obj[key] === 'string') out.push({ get: () => obj[key] as string, set: v => { (obj as any)[key] = v; } });
+  };
+  for (const day of plan) {
+    field(day, 'workoutTitle'); field(day, 'workoutTip'); field(day, 'nutritionTip');
+    for (const ex of day.exercises) { field(ex, 'name'); field(ex, 'notes'); }
+    for (const meal of day.meals.items) { field(meal, 'name'); field(meal, 'slot'); }
+    for (const sn of day.meals.sportsNutrition) field(sn, 'name');
+  }
+  return out;
+};
+
+// Cyrillic and Latin letters, digits, whitespace and ordinary punctuation
+// and symbols. Anything else in a plan title is a glitch.
+const ALLOWED_SCRIPT = /^[\p{Script=Cyrillic}\p{Script=Latin}\p{N}\p{P}\p{S}\p{Z}\s]*$/u;
+// A Latin word of four or more letters inside Russian text is an untranslated
+// word ("stretching", "Whey Protein"). All-caps acronyms (RPE, HIIT, BCAA, EMOM)
+// are fine.
+const LATIN_WORD = /\b[A-Za-z][a-z]{3,}\b/;
+const CYRILLIC = /\p{Script=Cyrillic}/u;
+// A Latin letter glued to a Cyrillic one is a homoglyph slip ("медaми",
+// "эдамaме" with a Latin "a"): it looks right and breaks search and hyphenation.
+const MIXED_SCRIPT_WORD = /\p{Script=Cyrillic}\p{Script=Latin}|\p{Script=Latin}\p{Script=Cyrillic}/u;
+// A term in brackets after its translation is a citation, not a slip: the
+// coach names the methodology it applies, "принцип разговорного темпа
+// (Conversational Pace)", and those names are English in the prompt.
+const BRACKETED = /\([^)]*\)/g;
+
+/** True when the string is not clean text in the given language. */
+export const hasTextGlitch = (text: string, language: 'en' | 'ru'): boolean => {
+  if (!ALLOWED_SCRIPT.test(text) || MIXED_SCRIPT_WORD.test(text)) return true;
+  const body = text.replace(BRACKETED, '');
+  return language === 'ru' ? LATIN_WORD.test(body) : CYRILLIC.test(body);
+};
+
+/**
+ * Fixes glitched strings in place through one extra model call. Never throws:
+ * a plan with one odd title is still a usable plan, so on any failure the
+ * plan is returned as it was and the problem is logged.
+ */
+export const proofreadPlan = async (
+  plan: DayPlan[],
+  apiKey: string,
+  language: 'en' | 'ru'
+): Promise<DayPlan[]> => {
+  const slots = planStrings(plan).filter(s => hasTextGlitch(s.get(), language));
+  if (slots.length === 0) return plan;
+  const originals = Array.from(new Set(slots.map(s => s.get())));
+  console.info('[proofreadPlan] glitched strings:', originals);
+
+  const lang = language === 'ru' ? 'Russian' : 'English';
+  const systemInstruction = `You are a proofreader for a fitness app. The strings below come from a training and meal plan written in ${lang}
+  but contain a glitch: characters from another script, or a word left in another language.
+  Rewrite each one as clean, natural ${lang} with the same meaning. Keep numbers, units and acronyms (RPE, HIIT, BCAA) as they are.
+  ${grammarRule(language)}
+  Never use em-dash or en-dash characters.
+  Respond ONLY with a raw JSON object mapping each original string to its corrected string.`;
+
+  try {
+    const key = apiKey?.trim();
+    if (!key) return plan;
+    const text = await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: JSON.stringify(originals) }] }], "application/json");
+    const fixes = JSON.parse(repairJson(text));
+    if (!fixes || typeof fixes !== 'object' || Array.isArray(fixes)) return plan;
+    for (const slot of slots) {
+      const fixed = fixes[slot.get()];
+      // Only accept a replacement that is itself clean; otherwise keep the original.
+      if (typeof fixed === 'string' && fixed.trim() && !hasTextGlitch(fixed, language)) slot.set(fixed.trim());
+    }
+  } catch (e) {
+    console.warn('[proofreadPlan] left the plan unchanged:', e);
+  }
+  return plan;
+};
+
 export const generateCoachResponse = async (
   history: ChatMessage[],
   userProfile: UserProfile,
@@ -720,11 +823,10 @@ export const generateProgramOutline = async (
   if (!key) return fillOutlineLocally(skeleton);
 
   const lang = language === 'ru' ? 'Russian' : 'English';
-  const labels = PHASE_LABELS[language];
-  const weeksBrief = skeleton.weeks.map(w => `${w.index}: starts ${w.startDate}, phase ${w.phase} (${labels[w.phase]})`).join('\n');
+  const weeksBrief = skeleton.weeks.map(w => `${w.index}: starts ${w.startDate}, phase ${w.phase} (${weekLabel(w, skeleton, language)})`).join('\n');
 
   const systemInstruction = `You are a head coach writing a ${skeleton.weeks.length}-week programme outline.
-  ATHLETE: ${userProfile.name}, level ${userProfile.fitnessLevel}, goals: ${userProfile.fitnessGoals.join(', ')}. Sports: ${describeSports(userProfile) || 'general fitness'}. Constraints: ${userProfile.contraindications || 'none'}. Diet: ${userProfile.dietaryPreferences || 'no restrictions'}.
+  ATHLETE: ${userProfile.name}, level ${userProfile.fitnessLevel}, goals: ${describeGoals(userProfile.fitnessGoals, language)}. Sports: ${describeSports(userProfile) || 'general fitness'}. Constraints: ${userProfile.contraindications || 'none'}. Diet: ${userProfile.dietaryPreferences || 'no restrictions'}.
   BLOCK GOAL: ${skeleton.goal || 'general fitness'}. ${skeleton.forCompetition ? `Competition on ${skeleton.endDate}.` : 'No competition: a two-month progression with a deload every fourth week.'}
   ${describeMethodologyForPrompt(userProfile, language)}
 
@@ -733,7 +835,8 @@ ${weeksBrief}
 
   For EACH week write: "focus" (one short line, what the week is for), "trainingTarget" (volume and intensity guidance, concrete: sessions, RPE or zones, how much more or less than the week before), "nutritionTarget" (calories direction and protein per kg, one line), "keySessions" (2-3 short names of the sessions the week is built around).
   Progress the load logically week to week; taper and race weeks reduce volume, never add new movements.
-  Respond ONLY with a JSON array of ${skeleton.weeks.length} objects: {"index": number, "focus": string, "trainingTarget": string, "nutritionTarget": string, "keySessions": string[]}. All text in ${lang}. No dashes.`;
+  Respond ONLY with a JSON array of ${skeleton.weeks.length} objects: {"index": number, "focus": string, "trainingTarget": string, "nutritionTarget": string, "keySessions": string[]}. All text in ${lang}. No dashes.
+  ${grammarRule(language)}`;
 
   try {
     const text = await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: 'Write the outline. JSON array only.' }] }], "application/json");
@@ -838,7 +941,8 @@ export const generateWeeklyPlan = async (
   workoutTitle, exercise names, meal names and slots, supplement names, workoutTip and nutritionTip.
   Do not leave English terms such as "Rest Day", "Full Body" or "Cardio" untranslated when ${lang} is not English.
   Never use em-dash or en-dash characters anywhere; use a comma or a regular hyphen.
-  Respond in ${lang}. Use the precise schema provided.`;
+  Respond in ${lang}. Use the precise schema provided.
+  ${grammarRule(language)}`;
 
   const prompt = `
     Generate a personalized 7-day health plan.
@@ -867,7 +971,7 @@ export const generateWeeklyPlan = async (
   try {
     const text = await geminiRest(key, systemInstruction, [{ role: 'user', parts: [{ text: prompt }] }], "application/json");
     const parsed = JSON.parse(repairJson(text));
-    const plan = normalizeWeeklyPlan(parsed, language);
+    const plan = await proofreadPlan(normalizeWeeklyPlan(parsed, language), key, language);
     // The week keeps its plan, so the programme becomes the history.
     attachPlanToCurrentWeek(plan);
     return plan;
@@ -894,7 +998,8 @@ export const generateMealDetails = async (
   
   Provide ingredients and recipe for "${mealName}". 
   The recipe MUST strictly follow the dietary preferences.
-  Return ONLY raw JSON. Respond in ${lang}.`;
+  Return ONLY raw JSON. Respond in ${lang}.
+  ${grammarRule(language)}`;
 
   const prompt = `{ "ingredients": ["..."], "recipe": "Markdown instructions", "tip": "Expert cooking tip" }`;
   try {
@@ -924,7 +1029,8 @@ export const generateSupplementTips = async (
   - Medical/Safety: ${userProfile.contraindications || "None"}
 
   Provide expert supplement advice for "${supplementName}".
-  Return ONLY raw JSON. Respond in ${lang}.`;
+  Return ONLY raw JSON. Respond in ${lang}.
+  ${grammarRule(language)}`;
 
   const prompt = `{
     "ingredients": ["List of key active compounds in this supplement, with dosage per serving"],
@@ -970,7 +1076,8 @@ export const generateExerciseDetails = async (
 
   Answer about the ONE exercise named in the user message and nothing else.
   If you do not recognise the exercise, say so plainly instead of describing a
-  different movement. Return ONLY raw JSON. Respond in ${lang}.`;
+  different movement. Return ONLY raw JSON. Respond in ${lang}.
+  ${grammarRule(language)}`;
 
   const prescription = [
     exercise?.sets ? `${exercise.sets} sets` : '',
@@ -1032,7 +1139,7 @@ export const askPlanQuestion = async (
 /** Fields a consultation is allowed to rewrite in the profile. */
 export type ProfilePatch = Partial<Pick<UserProfile,
   'weight' | 'contraindications' | 'dietaryPreferences' | 'mealsPerDay' |
-  'fitnessGoals' | 'useSupplements' | 'activityLevel' | 'sports' | 'competition'>>;
+  'fitnessGoals' | 'useSupplements' | 'activityLevel' | 'sports' | 'competitions'>>;
 
 export interface ConsultationResult {
   plan: DayPlan[];
@@ -1080,15 +1187,11 @@ export const normalizeProfilePatch = (raw: any, current: UserProfile): ProfilePa
     const key = (list: UserProfile['sports']) => list.map(sp => `${sp.name}:${sp.timesPerWeek}:${sp.durationMin}`).join('|');
     if (sports.length && key(sports) !== key(current.sports)) patch.sports = sports;
   }
-  if (raw.competition && typeof raw.competition === 'object') {
-    const c = raw.competition;
-    const next = {
-      enabled: typeof c.enabled === 'boolean' ? c.enabled : !!current.competition?.enabled,
-      sport: str(c.sport) || current.competition?.sport || '',
-      date: /^\d{4}-\d{2}-\d{2}$/.test(str(c.date)) ? str(c.date) : current.competition?.date || '',
-      goal: str(c.goal) || current.competition?.goal || '',
-    };
-    if (JSON.stringify(next) !== JSON.stringify(current.competition ?? null)) patch.competition = next;
+  if (Array.isArray(raw.competitions)) {
+    const competitions = normalizeCompetitions({ competitions: raw.competitions });
+    const key = (list: UserProfile['competitions']) =>
+      list.map(c => `${c.enabled}:${c.sport}:${c.date}:${c.goal}:${c.priority}`).join('|');
+    if (key(competitions) !== key(current.competitions)) patch.competitions = competitions;
   }
   return patch;
 };
@@ -1118,7 +1221,7 @@ export const extractProfileChanges = async (
     useSupplements: userProfile.useSupplements,
     activityLevel: userProfile.activityLevel,
     sports: userProfile.sports.map(({ name, timesPerWeek, durationMin }) => ({ name, timesPerWeek, durationMin })),
-    competition: userProfile.competition ?? null,
+    competitions: userProfile.competitions.map(({ enabled, sport, date, goal, priority }) => ({ enabled, sport, date, goal, priority })),
   };
 
   const systemInstruction = `You maintain a fitness and nutrition profile. Read what the user said in a consultation and decide which profile fields must change so that FUTURE plans remember it.
@@ -1130,7 +1233,8 @@ export const extractProfileChanges = async (
   - Allowed keys: weight (number, kg), contraindications (string), dietaryPreferences (string), mealsPerDay (integer 1-8),
     fitnessGoals (array of up to 5 strings), useSupplements (boolean),
     activityLevel ("Sedentary"|"Moderate"|"Active"|"Extra Active"),
-    sports (array of {name, timesPerWeek, durationMin} - the FULL list), competition ({enabled, sport, date "yyyy-mm-dd", goal}).
+    sports (array of {name, timesPerWeek, durationMin} - the FULL list),
+    competitions (array of {enabled, sport, date "yyyy-mm-dd", goal, priority "high"|"medium"|"low"} - the FULL list, one entry per event the athlete is preparing for).
   - dietaryPreferences and contraindications are free text. Return the MERGED text: keep what is there and add the new fact in ${lang}.
     Anything about food the user does not eat, dislikes, is allergic to, wants more or less of, a diet style, or meal timing belongs in dietaryPreferences.
     Anything about pain, injury, illness, or movements to avoid belongs in contraindications.
@@ -1183,9 +1287,10 @@ export const refinePlanWithConsultation = async (
      dietaryPreferences (string), mealsPerDay (integer 1-8), fitnessGoals (array of up to 5 strings),
      useSupplements (boolean), activityLevel ("Sedentary"|"Moderate"|"Active"|"Extra Active"),
      sports (array of {name, timesPerWeek, durationMin} - the FULL list, rewritten),
-     competition ({enabled, sport, date "yyyy-mm-dd", goal}).
+     competitions (array of {enabled, sport, date "yyyy-mm-dd", goal, priority "high"|"medium"|"low"} - the FULL list, rewritten).
      When a field is a free-text string (contraindications, dietaryPreferences), MERGE the new fact into the existing text rather than replacing it. Return {} if nothing lasting was said.
-  7. Respond ONLY with raw JSON: {"plan": [7 DayPlan objects], "profile": {...}}. Respond in ${lang}.`;
+  7. Respond ONLY with raw JSON: {"plan": [7 DayPlan objects], "profile": {...}}. Respond in ${lang}.
+  ${grammarRule(language)}`;
 
   const prompt = `Based on our consultation, provide the updated plan and profile changes. Return ONLY the JSON object.`;
 
@@ -1195,7 +1300,7 @@ export const refinePlanWithConsultation = async (
     // Older responses (and a model that ignores rule 7) return the bare array.
     const planRaw = Array.isArray(parsed) ? parsed : parsed?.plan;
     return {
-      plan: normalizeWeeklyPlan(planRaw, language),
+      plan: await proofreadPlan(normalizeWeeklyPlan(planRaw, language), key, language),
       profile: Array.isArray(parsed) ? {} : normalizeProfilePatch(parsed?.profile, userProfile),
     };
   } catch (e: any) {
