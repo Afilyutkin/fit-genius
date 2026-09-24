@@ -68,9 +68,27 @@ const isUpcoming = (c: CompetitionTarget): boolean =>
 export const getUpcomingCompetitions = (profile: Pick<UserProfile, 'competitions'>): CompetitionTarget[] =>
   (profile.competitions ?? []).filter(isUpcoming).sort((a, b) => daysUntil(a.date) - daysUntil(b.date));
 
-/** The event that currently drives periodisation: the nearest upcoming one. */
-export const getPrimaryCompetition = (profile: Pick<UserProfile, 'competitions'>): CompetitionTarget | undefined =>
-  getUpcomingCompetitions(profile)[0];
+const PRIORITY_RANK: Record<CompetitionPriority, number> = { high: 0, medium: 1, low: 2 };
+
+/**
+ * The event that gets the dedicated periodisation and taper: the highest
+ * priority upcoming one, nearest date breaking a tie. Everything else is
+ * still trained for (see `describeCompetitionForPrompt`), just without
+ * bending the main build-up around it.
+ */
+export const getPrimaryCompetition = (profile: Pick<UserProfile, 'competitions'>): CompetitionTarget | undefined => {
+  const upcoming = getUpcomingCompetitions(profile);
+  if (!upcoming.length) return undefined;
+  return [...upcoming].sort((a, b) =>
+    PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || daysUntil(a.date) - daysUntil(b.date)
+  )[0];
+};
+
+/** The furthest-out upcoming event; the training block runs through its date. */
+export const getFurthestCompetition = (profile: Pick<UserProfile, 'competitions'>): CompetitionTarget | undefined => {
+  const upcoming = getUpcomingCompetitions(profile);
+  return upcoming[upcoming.length - 1];
+};
 
 export const hasActiveCompetition = (profile: Pick<UserProfile, 'competitions'>): boolean =>
   !!getPrimaryCompetition(profile);
@@ -122,7 +140,7 @@ export const describeCompetitionForPrompt = (profile: UserProfile, language: Lan
 
   const others = getUpcomingCompetitions(profile).filter(o => o !== c);
   const secondary = others.length ? `
-ALSO TRAINING FOR (further out; do not let these override the phase above, but keep proportional touches of event-specific work for them — more for "high" priority, a light touch for "low"):
+ALSO TRAINING FOR (none of these get a dedicated taper — only the target above does; keep proportional touches of event-specific work for them instead, more for "high" priority, a light touch for "low", even one that falls chronologically before or after the target):
 ${others.map(o => `- ${o.sport || 'event'}, in ${weeksUntil(o.date)} week(s), priority ${o.priority}: ${o.goal || 'finish and perform well'}`).join('\n')}
 ` : '';
 

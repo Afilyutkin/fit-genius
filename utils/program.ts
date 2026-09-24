@@ -1,5 +1,5 @@
 import { DayPlan, Language, ProgramWeek, TrainingProgram, UserProfile } from '../types';
-import { daysUntil, getPrimaryCompetition, phaseForWeeks, PHASE_LABELS } from './competition';
+import { daysUntil, getFurthestCompetition, getPrimaryCompetition, phaseForWeeks, PHASE_LABELS } from './competition';
 import { describeGoals } from './profile';
 
 export const PROGRAM_KEY = 'zenith_program';
@@ -7,7 +7,8 @@ export const PROGRAM_KEY = 'zenith_program';
 /** Without an event the block is two months long. */
 export const DEFAULT_PROGRAM_WEEKS = 8;
 const MIN_WEEKS = 2;
-const MAX_WEEKS = 16;
+/** A block runs through the furthest enabled event; this just guards against a mistyped far-off date. */
+const MAX_WEEKS = 52;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -47,15 +48,19 @@ export const saveProgram = (program: TrainingProgram | null) => {
   }
 };
 
-/** How many weeks the block should run for this profile. */
+/**
+ * How many weeks the block should run for this profile: through the date of
+ * the furthest enabled event, even though only the highest-priority one
+ * (`getPrimaryCompetition`) gets a dedicated taper along the way.
+ */
 export const programLengthFor = (profile: UserProfile): { weeks: number; endDate: string; forCompetition: boolean } => {
   const start = mondayOf(new Date());
-  const primary = getPrimaryCompetition(profile);
-  if (primary) {
-    const days = daysUntil(primary.date);
-    // Count whole weeks from this Monday up to and including race week.
+  const furthest = getFurthestCompetition(profile);
+  if (furthest) {
+    const days = daysUntil(furthest.date);
+    // Count whole weeks from this Monday up to and including that event's week.
     const weeks = Math.min(MAX_WEEKS, Math.max(MIN_WEEKS, Math.ceil((days + ((new Date().getDay() + 6) % 7) + 1) / 7)));
-    return { weeks, endDate: primary.date, forCompetition: true };
+    return { weeks, endDate: furthest.date, forCompetition: true };
   }
   return { weeks: DEFAULT_PROGRAM_WEEKS, endDate: isoDate(addDays(start, DEFAULT_PROGRAM_WEEKS * 7 - 1)), forCompetition: false };
 };
@@ -68,14 +73,23 @@ export const programLengthFor = (profile: UserProfile): { weeks: number; endDate
 export const buildProgramSkeleton = (profile: UserProfile, language: Language): TrainingProgram => {
   const { weeks, endDate, forCompetition } = programLengthFor(profile);
   const start = mondayOf(new Date());
+  const primary = getPrimaryCompetition(profile);
+  // Monday of the target's own week: whole-week arithmetic from here is exact,
+  // so the target's race week reliably lands on phase "race" regardless of how
+  // far the block runs past it for a lower-priority event.
+  const raceMonday = primary ? mondayOf(new Date(`${primary.date}T00:00:00`)) : null;
   const list: ProgramWeek[] = Array.from({ length: weeks }, (_, i) => {
     const weekStart = addDays(start, i * 7);
-    const weeksLeft = forCompetition ? weeks - 1 - i : NaN;
-    const phase = forCompetition ? phaseForWeeks(weeksLeft) : 'off';
+    // Anchored to the priority target's date, not the block length: a low-priority
+    // event can push the block on well past the target's own race week.
+    const weeksLeft = forCompetition && raceMonday ? Math.round((raceMonday.getTime() - weekStart.getTime()) / (7 * DAY_MS)) : NaN;
+    const phase = forCompetition && primary ? phaseForWeeks(weeksLeft) : 'off';
     return {
       index: i + 1,
       startDate: isoDate(weekStart),
-      phase: phase === 'past' ? 'race' : phase,
+      // Once the target event has passed, go back to building rather than
+      // staying in a permanent "race week" for the rest of the block.
+      phase: phase === 'past' ? 'base' : phase,
       focus: '',
       trainingTarget: '',
       nutritionTarget: '',
@@ -83,7 +97,6 @@ export const buildProgramSkeleton = (profile: UserProfile, language: Language): 
     };
   });
 
-  const primary = getPrimaryCompetition(profile);
   const goal = forCompetition && primary
     ? [primary.sport, primary.goal].filter(Boolean).join(': ')
     : describeGoals(profile.fitnessGoals, language);
