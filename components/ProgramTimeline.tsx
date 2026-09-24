@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { CalendarRange, Check, Flag, ChevronRight, Dumbbell, Utensils } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { Language, ProgramWeek, TrainingProgram } from '../types';
-import { PHASE_LABELS } from '../utils/competition';
-import { currentWeekIndex } from '../utils/program';
+import { currentWeekIndex, programGoalLabel, weekLabel } from '../utils/program';
 import { shortDayLabel } from '../utils/days';
 import { pluralRu } from '../utils/plural';
 
@@ -45,7 +44,6 @@ const ProgramTimeline: React.FC<Props> = ({ program, language, mode = 'training'
   const reduce = useReducedMotion();
   const current = currentWeekIndex(program);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const labels = PHASE_LABELS[language];
   const open = openIndex ? program.weeks[openIndex - 1] : null;
 
   const status = (w: ProgramWeek): 'done' | 'current' | 'upcoming' =>
@@ -62,7 +60,7 @@ const ProgramTimeline: React.FC<Props> = ({ program, language, mode = 'training'
               : (isRu ? `${program.weeks.length} недель прогресса` : `${program.weeks.length}-week block`)}
           </h2>
           {program.goal && (
-            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{program.goal}</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{programGoalLabel(program, language)}</p>
           )}
         </div>
         <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums flex items-center gap-1.5">
@@ -100,7 +98,7 @@ const ProgramTimeline: React.FC<Props> = ({ program, language, mode = 'training'
                 {w.phase === 'race' && <Flag size={12} className={st === 'current' ? 'text-slate-950' : 'text-flame-500'} />}
               </div>
               <p className={`text-[10px] uppercase tracking-wide mt-2 leading-tight ${st === 'current' ? 'text-slate-950/70' : 'opacity-70'}`}>
-                {labels[w.phase]}
+                {weekLabel(w, program, language)}
               </p>
               {nutrition
                 ? (avgCalories(w) !== null && st !== 'upcoming' && (
@@ -130,7 +128,7 @@ const ProgramTimeline: React.FC<Props> = ({ program, language, mode = 'training'
             }}
             className="overflow-hidden"
           >
-            <WeekDetail week={open} status={status(open)} language={language} nutrition={nutrition} />
+            <WeekDetail week={open} forCompetition={program.forCompetition} status={status(open)} language={language} nutrition={nutrition} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -138,16 +136,15 @@ const ProgramTimeline: React.FC<Props> = ({ program, language, mode = 'training'
   );
 };
 
-const WeekDetail: React.FC<{ week: ProgramWeek; status: 'done' | 'current' | 'upcoming'; language: Language; nutrition: boolean }> = ({ week, status, language, nutrition }) => {
+const WeekDetail: React.FC<{ week: ProgramWeek; forCompetition: boolean; status: 'done' | 'current' | 'upcoming'; language: Language; nutrition: boolean }> = ({ week, forCompetition, status, language, nutrition }) => {
   const isRu = language === 'ru';
-  const labels = PHASE_LABELS[language];
   const [openDay, setOpenDay] = useState<number | null>(null);
 
   return (
     <div className="mt-4 surface-muted rounded-[var(--radius-card)] p-4 sm:p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h3 className="font-display text-lg font-semibold uppercase text-slate-900 dark:text-white">
-          {isRu ? 'Неделя' : 'Week'} {week.index} · {labels[week.phase]}
+          {isRu ? 'Неделя' : 'Week'} {week.index} · {weekLabel(week, { forCompetition }, language)}
         </h3>
         <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">{weekRange(week, language)}</span>
       </div>

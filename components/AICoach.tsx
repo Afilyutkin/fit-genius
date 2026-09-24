@@ -33,10 +33,13 @@ const describePatch = (patch: ProfilePatch, isRu: boolean): string[] => {
     const list = patch.sports.map(sp => `${sp.name} ${sp.timesPerWeek}×${sp.durationMin} ${isRu ? 'мин' : 'min'}`).join(', ');
     out.push(isRu ? `виды спорта: ${list}` : `sports: ${list}`);
   }
-  if (patch.competition) {
-    out.push(patch.competition.enabled
-      ? (isRu ? `соревнование: ${patch.competition.sport} ${patch.competition.date}` : `competition: ${patch.competition.sport} ${patch.competition.date}`)
-      : (isRu ? 'соревнование: снято' : 'competition: cleared'));
+  if (patch.competitions) {
+    const active = patch.competitions.filter(c => c.enabled);
+    out.push(active.length
+      ? (isRu
+          ? `старты: ${active.map(c => `${c.sport} ${c.date}`).join(', ')}`
+          : `events: ${active.map(c => `${c.sport} ${c.date}`).join(', ')}`)
+      : (isRu ? 'старты: сняты' : 'events: cleared'));
   }
   return out;
 };
