@@ -1,4 +1,4 @@
-import { SportPreference, UserProfile } from '../types';
+import { Language, SportPreference, UserProfile } from '../types';
 
 export const SPORT_LIMITS = {
   timesPerWeek: { min: 1, max: 14 },
@@ -71,3 +71,22 @@ export const normalizeSports = (raw: any): SportPreference[] => {
     durationMin: duration,
   }));
 };
+
+/**
+ * Stored goal values are the English keys the profile form saves ("Muscle
+ * Gain"); the words a user should read live in the translations. Unknown
+ * values (older builds, hand edits) fall through unchanged.
+ */
+const GOAL_LABELS: Record<string, Record<Language, string>> = {
+  'Strength': { en: 'Strength', ru: 'Сила' },
+  'Endurance': { en: 'Endurance', ru: 'Выносливость' },
+  'Flexibility': { en: 'Flexibility', ru: 'Гибкость' },
+  'Speed': { en: 'Speed', ru: 'Скорость' },
+  'Stress Relief': { en: 'Stress Relief', ru: 'Снятие стресса' },
+  'General Health': { en: 'General Health', ru: 'Здоровье' },
+  'Muscle Gain': { en: 'Muscle Gain', ru: 'Набор массы' },
+  'Lose Weight': { en: 'Weight Loss', ru: 'Похудение' },
+};
+
+export const describeGoals = (goals: string[], language: Language): string =>
+  (goals || []).map(g => GOAL_LABELS[g]?.[language] ?? g).join(', ');

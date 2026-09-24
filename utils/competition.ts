@@ -1,4 +1,4 @@
-import { CompetitionTarget, Language, UserProfile } from '../types';
+import { CompetitionPriority, CompetitionTarget, Language, UserProfile } from '../types';
 
 /** Training block the athlete is in, derived from weeks left. */
 export type TrainingPhase = 'off' | 'base' | 'build' | 'peak' | 'taper' | 'race' | 'past';
@@ -54,13 +54,44 @@ export const PHASE_LABELS: Record<Language, Record<TrainingPhase, string>> = {
   },
 };
 
-export const hasActiveCompetition = (profile: Pick<UserProfile, 'competition'>): boolean => {
-  const c = profile.competition;
-  return !!(c?.enabled && c.date && !Number.isNaN(daysUntil(c.date)) && daysUntil(c.date) >= 0);
-};
+/** Ids only need to be unique within one profile, not globally. */
+export const newCompetitionId = (): string => `comp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
 export const DEFAULT_COMPETITION: CompetitionTarget = {
-  enabled: false, sport: '', date: '', goal: '',
+  enabled: false, sport: '', date: '', goal: '', priority: 'medium',
+};
+
+const isUpcoming = (c: CompetitionTarget): boolean =>
+  !!(c.enabled && c.date && !Number.isNaN(daysUntil(c.date)) && daysUntil(c.date) >= 0);
+
+/** Enabled events that haven't happened yet, nearest first. */
+export const getUpcomingCompetitions = (profile: Pick<UserProfile, 'competitions'>): CompetitionTarget[] =>
+  (profile.competitions ?? []).filter(isUpcoming).sort((a, b) => daysUntil(a.date) - daysUntil(b.date));
+
+/** The event that currently drives periodisation: the nearest upcoming one. */
+export const getPrimaryCompetition = (profile: Pick<UserProfile, 'competitions'>): CompetitionTarget | undefined =>
+  getUpcomingCompetitions(profile)[0];
+
+export const hasActiveCompetition = (profile: Pick<UserProfile, 'competitions'>): boolean =>
+  !!getPrimaryCompetition(profile);
+
+export const normalizeCompetition = (raw: any): CompetitionTarget => ({
+  id: typeof raw?.id === 'string' && raw.id ? raw.id : newCompetitionId(),
+  enabled: !!raw?.enabled,
+  sport: String(raw?.sport ?? '').trim(),
+  date: /^\d{4}-\d{2}-\d{2}$/.test(String(raw?.date ?? '')) ? raw.date : '',
+  goal: String(raw?.goal ?? '').trim(),
+  priority: (['high', 'medium', 'low'] as CompetitionPriority[]).includes(raw?.priority) ? raw.priority : 'medium',
+});
+
+/**
+ * Handles the current shape, the pre-list single `competition` field, and
+ * profiles with neither.
+ */
+export const normalizeCompetitions = (raw: any): CompetitionTarget[] => {
+  if (Array.isArray(raw?.competitions)) return raw.competitions.map(normalizeCompetition);
+  if (raw?.competition && typeof raw.competition === 'object') return [normalizeCompetition(raw.competition)];
+  return [];
 };
 
 /**
@@ -70,8 +101,8 @@ export const DEFAULT_COMPETITION: CompetitionTarget = {
  * months out or on Saturday, which is exactly backwards for an athlete.
  */
 export const describeCompetitionForPrompt = (profile: UserProfile, language: Language): string => {
-  const c = profile.competition;
-  if (!c?.enabled || !c.date) return '';
+  const c = getPrimaryCompetition(profile);
+  if (!c) return '';
 
   const weeks = weeksUntil(c.date);
   const days = daysUntil(c.date);
@@ -89,6 +120,12 @@ export const describeCompetitionForPrompt = (profile: UserProfile, language: Lan
     past: '',
   };
 
+  const others = getUpcomingCompetitions(profile).filter(o => o !== c);
+  const secondary = others.length ? `
+ALSO TRAINING FOR (further out; do not let these override the phase above, but keep proportional touches of event-specific work for them — more for "high" priority, a light touch for "low"):
+${others.map(o => `- ${o.sport || 'event'}, in ${weeksUntil(o.date)} week(s), priority ${o.priority}: ${o.goal || 'finish and perform well'}`).join('\n')}
+` : '';
+
   return `
 COMPETITION TARGET (this is the whole point of the plan):
 - Event sport / discipline: ${c.sport || profile.sports?.[0]?.name || 'not specified'}
@@ -96,7 +133,7 @@ COMPETITION TARGET (this is the whole point of the plan):
 - Athlete's stated goal: ${c.goal || 'finish and perform well'}
 
 ${plans[phase]}
-
+${secondary}
 COMPETITION RULES:
 - Every week you generate must fit the phase above and move the athlete toward that stated goal. Say in workoutTip how the day serves the event.
 - Respect the sports schedule the athlete set; the event discipline gets priority when time is short.
@@ -105,15 +142,16 @@ COMPETITION RULES:
 `;
 };
 
-/** One-line summary for the interface, e.g. "Марафон, через 6 нед." */
+/** One-line summary for the interface, e.g. "Марафон: через 6 нед. (+1 старт)" */
 export const describeCompetition = (profile: UserProfile, language: Language): string => {
-  const c = profile.competition;
-  if (!c?.enabled || !c.date) return '';
+  const isRu = language === 'ru';
+  const c = getPrimaryCompetition(profile);
+  if (!c) return '';
   const weeks = weeksUntil(c.date);
   if (Number.isNaN(weeks)) return '';
-  const isRu = language === 'ru';
-  if (weeks < 0) return isRu ? 'Соревнование прошло' : 'Event has passed';
   const sport = c.sport || profile.sports?.[0]?.name || (isRu ? 'старт' : 'event');
-  if (weeks === 0) return isRu ? `${sport}: на этой неделе` : `${sport}: this week`;
-  return isRu ? `${sport}: через ${weeks} нед.` : `${sport}: in ${weeks} week(s)`;
+  const extra = getUpcomingCompetitions(profile).length - 1;
+  const suffix = extra > 0 ? (isRu ? ` (+${extra} старт${extra > 1 ? 'а' : ''})` : ` (+${extra} more)`) : '';
+  if (weeks === 0) return isRu ? `${sport}: на этой неделе${suffix}` : `${sport}: this week${suffix}`;
+  return isRu ? `${sport}: через ${weeks} нед.${suffix}` : `${sport}: in ${weeks} week(s)${suffix}`;
 };

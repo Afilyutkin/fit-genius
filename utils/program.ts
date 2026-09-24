@@ -1,5 +1,6 @@
 import { DayPlan, Language, ProgramWeek, TrainingProgram, UserProfile } from '../types';
-import { daysUntil, hasActiveCompetition, phaseForWeeks, PHASE_LABELS } from './competition';
+import { daysUntil, getPrimaryCompetition, phaseForWeeks, PHASE_LABELS } from './competition';
+import { describeGoals } from './profile';
 
 export const PROGRAM_KEY = 'zenith_program';
 
@@ -49,11 +50,12 @@ export const saveProgram = (program: TrainingProgram | null) => {
 /** How many weeks the block should run for this profile. */
 export const programLengthFor = (profile: UserProfile): { weeks: number; endDate: string; forCompetition: boolean } => {
   const start = mondayOf(new Date());
-  if (hasActiveCompetition(profile) && profile.competition) {
-    const days = daysUntil(profile.competition.date);
+  const primary = getPrimaryCompetition(profile);
+  if (primary) {
+    const days = daysUntil(primary.date);
     // Count whole weeks from this Monday up to and including race week.
     const weeks = Math.min(MAX_WEEKS, Math.max(MIN_WEEKS, Math.ceil((days + ((new Date().getDay() + 6) % 7) + 1) / 7)));
-    return { weeks, endDate: profile.competition.date, forCompetition: true };
+    return { weeks, endDate: primary.date, forCompetition: true };
   }
   return { weeks: DEFAULT_PROGRAM_WEEKS, endDate: isoDate(addDays(start, DEFAULT_PROGRAM_WEEKS * 7 - 1)), forCompetition: false };
 };
@@ -81,9 +83,10 @@ export const buildProgramSkeleton = (profile: UserProfile, language: Language): 
     };
   });
 
-  const goal = forCompetition && profile.competition
-    ? [profile.competition.sport, profile.competition.goal].filter(Boolean).join(': ')
-    : profile.fitnessGoals.join(', ');
+  const primary = getPrimaryCompetition(profile);
+  const goal = forCompetition && primary
+    ? [primary.sport, primary.goal].filter(Boolean).join(': ')
+    : describeGoals(profile.fitnessGoals, language);
 
   return {
     createdAt: new Date().toISOString(),
@@ -94,6 +97,31 @@ export const buildProgramSkeleton = (profile: UserProfile, language: Language): 
     language,
     weeks: list,
   };
+};
+
+/**
+ * The goal as the user should read it. Programmes saved before goals were
+ * localised hold the raw English keys ("Strength, Muscle Gain"), so the
+ * translation is applied on the way out too; a competition goal is the
+ * athlete's own words and passes through untouched.
+ */
+export const programGoalLabel = (program: Pick<TrainingProgram, 'goal' | 'forCompetition'>, language: Language): string =>
+  program.forCompetition ? program.goal : describeGoals(program.goal.split(', ').filter(Boolean), language);
+
+/** Without an event the block runs in cycles of three loading weeks and a deload. */
+export const isDeloadWeek = (week: ProgramWeek, program: Pick<TrainingProgram, 'forCompetition'>): boolean =>
+  !program.forCompetition && week.index % 4 === 0;
+
+/**
+ * What a week's card says. Competition weeks carry their phase; without an
+ * event the phase is "off", which is not a label anyone can train to, so the
+ * card names the week's place in the loading cycle instead.
+ */
+export const weekLabel = (week: ProgramWeek, program: Pick<TrainingProgram, 'forCompetition'>, language: Language): string => {
+  if (program.forCompetition || week.phase !== 'off') return PHASE_LABELS[language][week.phase];
+  if (isDeloadWeek(week, program)) return language === 'ru' ? 'Разгрузка' : 'Deload';
+  const n = ((week.index - 1) % 4) + 1;
+  return language === 'ru' ? `Нагрузка ${n}` : `Loading ${n}`;
 };
 
 /**
@@ -118,11 +146,11 @@ export const fillOutlineLocally = (program: TrainingProgram): TrainingProgram =>
     off: { focus: 'Progress through the cycle', training: 'Three loading weeks, the fourth a deload', nutrition: 'To the profile goals', key: ['Main strength or key session', 'Easy aerobic'] },
   };
 
-  const weeks = program.weeks.map((w, i) => {
+  const weeks = program.weeks.map(w => {
     if (w.focus) return w;
     const t = text[w.phase];
     // Without an event, every fourth week is the deload.
-    const deload = !program.forCompetition && (i + 1) % 4 === 0;
+    const deload = isDeloadWeek(w, program);
     return {
       ...w,
       focus: deload ? (ru ? 'Разгрузочная неделя' : 'Deload week') : t.focus,
@@ -181,17 +209,17 @@ export const describeProgramForPrompt = (program: TrainingProgram | null, langua
   const idx = currentWeekIndex(program);
   const week = program.weeks[idx - 1];
   if (!week) return '';
-  const labels = PHASE_LABELS[language];
+  const label = (w: ProgramWeek) => weekLabel(w, program, language);
   const prev = program.weeks[idx - 2];
   const next = program.weeks[idx];
   const lines = [
     `Programme goal: ${program.goal || 'general fitness'}. Block of ${program.weeks.length} weeks, ${program.startDate} to ${program.endDate}.`,
-    `THIS WEEK IS WEEK ${idx} OF ${program.weeks.length}: phase "${labels[week.phase]}". Focus: ${week.focus}.`,
+    `THIS WEEK IS WEEK ${idx} OF ${program.weeks.length}: phase "${label(week)}". Focus: ${week.focus}.`,
     `Training target: ${week.trainingTarget}.`,
     `Nutrition target: ${week.nutritionTarget}.`,
     week.keySessions.length ? `Key sessions the week must contain: ${week.keySessions.join('; ')}.` : '',
-    prev?.completionPercent !== undefined ? `Previous week (${labels[prev.phase]}) was completed at ${prev.completionPercent}%.` : '',
-    next ? `Next week will be "${labels[next.phase]}": ${next.focus}. Do not front-load its work into this week.` : '',
+    prev?.completionPercent !== undefined ? `Previous week (${label(prev)}) was completed at ${prev.completionPercent}%.` : '',
+    next ? `Next week will be "${label(next)}": ${next.focus}. Do not front-load its work into this week.` : '',
   ].filter(Boolean);
   return `\nPROGRAMME CONTEXT:\n${lines.map(l => `- ${l}`).join('\n')}\n`;
 };
